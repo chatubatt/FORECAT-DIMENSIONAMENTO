@@ -272,13 +272,14 @@ function parseIntervalToMinutes(interval: string): number {
  * Verifica se um horário de intervalo está dentro da janela operacional válida.
  * A janela é controlada pelo dimOpHours do usuário (config), não hardcoded.
  * Esta função é usada apenas como fallback quando não há config disponível.
- * Janela padrão flexível: 05:00 a 23:59 (permite que o config defina os limites reais).
+ * Janela padrão flexível: 00:00 a 23:59 (permite que o config defina os limites reais).
  */
 export function isValidOperatingInterval(interval: string): boolean {
   const mins = parseIntervalToMinutes(interval);
   if (mins < 0) return false;
-  // Janela flexível: qualquer horário válido (o controle fino é feito pelo config dimOpHours)
-  return mins >= 300 && mins <= 1439; // 05:00 (300) a 23:59 (1439)
+  // Janela totalmente flexível: qualquer horário válido do dia
+   // O controle fino do que é operacional é feito pelo config dimOpHours no calculateStaffingStrategy
+  return mins >= 0 && mins <= 1439; // 00:00 a 23:59
 }
 
 export function isWithinOperatingHours(dateStr: string, interval: string, config: OperatingHoursConfig): boolean {
@@ -296,7 +297,12 @@ export function isWithinOperatingHours(dateStr: string, interval: string, config
   const startMins = parseIntervalToMinutes(hours.start);
   const endMins = parseIntervalToMinutes(hours.end);
   
-  // if endMins <= startMins, it crosses midnight. (For simplicity assume it doesn't)
+  // Suportar janela que atravessa meia-noite (ex: 06:00-00:00)
+  if (endMins <= startMins) {
+    // Cruza meia-noite: operacional se >= start OU < end
+    return intMins >= startMins || intMins < endMins;
+  }
+  
   return intMins >= startMins && intMins < endMins;
 }
 

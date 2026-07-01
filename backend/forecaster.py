@@ -581,7 +581,7 @@ class CallCenterForecaster:
             'dias_treinamento': self.history_stats.get('dias_treinamento', 0),
             'periodo_historico': f'{periodo_inicio} a {periodo_fim}',
             'validacao': validacao_tipo,
-            'curva_diaria_fonte': 'Histórico real de intervalos' if tem_intervalo else 'Distribuição uniforme 08:00–20:00',
+            'curva_diaria_fonte': 'Histórico real de intervalos' if tem_intervalo else 'Curva padrão 06:00–23:50 (ajustável pelo horário de operação)',
             'tmo_fonte': 'Histórico real de TMO' if tmo_tem_dado else 'Valor padrão 240s',
         }
         

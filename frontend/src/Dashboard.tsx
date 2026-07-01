@@ -1445,11 +1445,11 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       if (chunk.length === 0) continue;
 
       // Filtrar chunks onde todos os intervalos estão fechados (fora do horário de operação)
-      const allClosed = chunk.every((r: any) => r.isClosed);
-      if (allClosed) continue;
+      const openIntervals = chunk.filter((r: any) => !r.isClosed);
+      if (openIntervals.length === 0) continue;
 
-      const sumVol = chunk.reduce((sum: number, r: any) => sum + r.volume, 0);
-      const maxReqAgents = Math.max(...chunk.map((r: any) => r.requiredAgents));
+      const sumVol = openIntervals.reduce((sum: number, r: any) => sum + r.volume, 0);
+      const maxReqAgents = Math.max(...openIntervals.map((r: any) => r.requiredAgents));
       let maxCoverage = 0;
       let peakIdx = 0;
       for (let idx = 0; idx < chunk.length; idx++) {
@@ -1485,12 +1485,12 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       if (chunk.length === 0) continue;
 
       // Filtrar chunks onde todos os intervalos estão fechados
-      const allClosed = chunk.every((r: any) => r.isClosed);
-      if (allClosed) continue;
+      const openIntervals = chunk.filter((r: any) => !r.isClosed);
+      if (openIntervals.length === 0) continue;
 
-      const maxReqAgents = Math.max(...chunk.map((r: any) => r.requiredAgents));
-      const avgOccupancy = chunk.reduce((sum: number, r: any) => sum + (r.occupancy || 0), 0) / chunk.length;
-      const avgSla = chunk.reduce((sum: number, r: any) => sum + (r.serviceLevel || 0), 0) / chunk.length;
+      const maxReqAgents = Math.max(...openIntervals.map((r: any) => r.requiredAgents));
+      const avgOccupancy = openIntervals.reduce((sum: number, r: any) => sum + (r.occupancy || 0), 0) / openIntervals.length;
+      const avgSla = openIntervals.reduce((sum: number, r: any) => sum + (r.serviceLevel || 0), 0) / openIntervals.length;
 
       chunked.push({
         intervalo: chunk[0].intervalo,
@@ -3931,7 +3931,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                               checked={dimOpHours.weekdays.start === '00:00' && dimOpHours.weekdays.end === '23:59' && !dimOpHours.weekdays.closed}
                               onChange={e => {
                                 if (e.target.checked) setDimOpHours({ ...dimOpHours, weekdays: { start: '00:00', end: '23:59', closed: false } });
-                                else setDimOpHours({ ...dimOpHours, weekdays: { start: '08:00', end: '20:00', closed: false } });
+                                else setDimOpHours({ ...dimOpHours, weekdays: { start: '06:00', end: '00:00', closed: false } });
                               }}
                               className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-blue-500 focus:ring-blue-500"
                             />
