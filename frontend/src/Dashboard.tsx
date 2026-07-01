@@ -158,7 +158,7 @@ export default function Dashboard() {
   const [forecastData, setForecastData] = useState<DailyForecast[]>([]);
   const [stats, setStats] = useState<HistoryStats | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'forecast' | 'calendario' | 'historico' | 'baseline' | 'previsao_mensal' | 'dimensionamento' | 'curvas' | 'metodologia' | 'cenarios'>('forecast');
+  const [activeTab, setActiveTab] = useState<'forecast' | 'calendario' | 'historico' | 'baseline' | 'previsao_mensal' | 'dimensionamento' | 'metodologia' | 'cenarios'>('forecast');
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
   const [flutuacao, setFlutuacao] = useState<number>(0);
   const [incremento, setIncremento] = useState<number>(0);
@@ -181,9 +181,7 @@ export default function Dashboard() {
   const [selectedCelula, setSelectedCelula] = useState<string>('Todas');
 
   const [dimTargetSlaPercent, setDimTargetSlaPercent] = useState<number>(80);
-  const [dimWeeklyCurves, setDimWeeklyCurves] = useState<Record<number, string>>({
-    0: 'padrao', 1: 'padrao', 2: 'padrao', 3: 'padrao', 4: 'padrao', 5: 'padrao', 6: 'padrao'
-  });
+  const [dimCurveType, setDimCurveType] = useState<string>('padrao');
   const [dimTargetDmmSlaPercent, setDimTargetDmmSlaPercent] = useState<number>(30); // Target for DMM
   const [dimDmmRank, setDimDmmRank] = useState<number>(1); // Qual DMM usar como base (1 a 5)
   const [dimTargetSlaTime, setDimTargetSlaTime] = useState<number>(20);
@@ -674,41 +672,34 @@ export default function Dashboard() {
     if (activeTab !== 'dimensionamento' || monthForecastData.length === 0) return [];
 
     // NOVO: Aplicar Curva de Distribuição Selecionada
-    let forecastToUse = monthForecastData.map(day => {
-      const dow = new Date(day.data + "T00:00:00").getDay();
-      // getDay() gives 0=Sun, 1=Mon... We map to our indices: 0=Mon, 1=Tue... 6=Sun
-      const myDow = dow === 0 ? 6 : dow - 1;
-      const cType = dimWeeklyCurves[myDow];
-      if (cType !== 'padrao' && stats?.curvas_distribuicao?.[cType]) {
-        const curve = stats.curvas_distribuicao[cType] || {};
+    let forecastToUse = monthForecastData;
+    if (dimCurveType !== 'padrao' && stats?.curvas_distribuicao?.[dimCurveType]) {
+      const curve = stats?.curvas_distribuicao?.[dimCurveType] || {};
+      forecastToUse = forecastToUse.map(day => {
         const totalVol = day.intervalos.reduce((s, i) => s + i.volume, 0);
         const totalTmo = day.intervalos.reduce((s, i) => s + (i.volume * (i.tmo || 240)), 0);
         const tmoAvg = totalVol > 0 ? Math.round(totalTmo / totalVol) : 240;
 
-        const distVols: { intervalo: string, volume: number, frac: number, tmo: number }[] = [];
-        let sumInts = 0;
-        for (const orig of day.intervalos) {
-          const interv = orig.intervalo;
-          const prop = (curve[interv] as number) || 0;
+        const withIdx = day.intervalos.map((orig, idx) => {
+          const prop = (curve[orig.intervalo] as number) || 0;
           const exact = totalVol * prop;
-          const intPart = Math.floor(exact);
-          const frac = exact - intPart;
-          distVols.push({ intervalo: interv, volume: intPart, frac, tmo: tmoAvg });
-          sumInts += intPart;
-        }
-        const rem = Math.round(totalVol) - sumInts;
-        const sorted = [...distVols].map((v, i) => ({ ...v, i })).sort((a, b) => b.frac - a.frac);
-        for (let i = 0; i < rem; i++) {
-          if (sorted[i]) sorted[i].volume += 1;
-        }
-        const finalRes = Array(distVols.length).fill(null);
-        sorted.forEach(s => {
-          finalRes[s.i] = { intervalo: s.intervalo, volume: s.volume, tmo: s.tmo };
+          return { ...orig, exact, volume: Math.floor(exact), frac: exact - Math.floor(exact), idx, tmo: tmoAvg };
         });
-        return { ...day, intervalos: finalRes };
-      }
-      return day;
-    });
+
+        let sumInts = withIdx.reduce((s, i) => s + i.volume, 0);
+        const rem = Math.round(totalVol) - sumInts;
+        withIdx.sort((a, b) => b.frac - a.frac);
+        for (let i = 0; i < rem; i++) {
+          if (i < withIdx.length) withIdx[i].volume += 1;
+        }
+        withIdx.sort((a, b) => a.idx - b.idx);
+
+        return {
+          ...day,
+          intervalos: withIdx.map(d => ({ intervalo: d.intervalo, volume: d.volume, tmo: d.tmo }))
+        };
+      });
+    }
 
     // NOVO: Aplicar Volume Fixo Mensal se existir
     if (dimFixedVolume !== '') {
@@ -747,7 +738,7 @@ export default function Dashboard() {
     };
 
     return calculateStaffingStrategy(forecastToUse as any[], inputs, dimStrategy, dimOpHours);
-  }, [activeTab, monthForecastData, dimTargetSlaPercent, dimTargetSlaTime, dimShrinkage, dimMaxOccupancy, dimFixedAgents, dimTma, dimStrategy, dimOpHours, dimFixedVolume, dimWeeklyCurves, stats]);
+  }, [activeTab, monthForecastData, dimTargetSlaPercent, dimTargetSlaTime, dimShrinkage, dimMaxOccupancy, dimFixedAgents, dimTma, dimStrategy, dimOpHours, dimFixedVolume, dimCurveType, stats]);
 
   const erlangData = useMemo(() => {
     if (optimizedMonthErlang.length === 0) return [];
@@ -1897,12 +1888,6 @@ export default function Dashboard() {
             Dimensionamento (Erlang)
           </button>
           <button
-            onClick={() => setActiveTab('curvas')}
-            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'curvas' ? 'border-pink-500 text-pink-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-          >
-            Curvas Semanais
-          </button>
-          <button
             onClick={() => setActiveTab('metodologia')}
             className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'metodologia' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
           >
@@ -1915,122 +1900,6 @@ export default function Dashboard() {
             Cenários Salvos
           </button>
         </div>
-
-        {activeTab === 'curvas' && stats && (
-          <div className="space-y-6 mt-8">
-            <div className="flex justify-between items-end border-b border-slate-700 pb-2">
-              <h2 className="text-2xl font-bold flex items-center gap-2 text-pink-400">
-                📈 Curvas Semanais (Por Dia da Semana)
-              </h2>
-            </div>
-            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-              <div className="xl:col-span-1 bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
-                <h3 className="text-lg font-semibold mb-4 text-slate-200">Configuração Semanal</h3>
-                <div className="space-y-4">
-                  {['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo'].map((diaName, idx) => (
-                    <div key={idx}>
-                      <label className="block text-sm text-slate-400 mb-1">{diaName}</label>
-                      <select
-                        value={dimWeeklyCurves[idx]}
-                        onChange={(e) => setDimWeeklyCurves({...dimWeeklyCurves, [idx]: e.target.value})}
-                        className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm"
-                      >
-                        <option value="padrao">Padrão (Dia a Dia)</option>
-                        <optgroup label="Visões Gerais">
-                          <option value="consolidado">Consolidada (Geral)</option>
-                          <option value="consolidado_sem_outlier">Consolidada (Sem Outliers)</option>
-                          <option value="consolidado_desvio">Consolidada (Média + Desvio Padrão)</option>
-                          <option value="consolidado_mediana">Consolidada (Mediana)</option>
-                          <option value="0">Segunda-feira</option>
-                          <option value="1">Terça-feira</option>
-                          <option value="2">Quarta-feira</option>
-                          <option value="3">Quinta-feira</option>
-                          <option value="4">Sexta-feira</option>
-                          <option value="5">Sábado</option>
-                          <option value="6">Domingo</option>
-                        </optgroup>
-                        <optgroup label="Consolidadas por Mês">
-                          {Object.keys(stats?.curvas_distribuicao || {})
-                            .filter(k => k.startsWith('consolidado_') && !['consolidado_sem_outlier', 'consolidado_desvio', 'consolidado_mediana'].includes(k))
-                            .sort((a,b) => b.localeCompare(a))
-                            .map(k => {
-                              const [_, ano, m] = k.split(/_|-/);
-                              const nomeMes = new Date(parseInt(ano), parseInt(m) - 1, 1).toLocaleString('pt-BR', { month: 'short' });
-                              const label = `Consolidada - ${nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)}/${ano}`;
-                              return <option key={k} value={k}>{label}</option>;
-                            })
-                          }
-                        </optgroup>
-                        <optgroup label="Curvas Específicas (Dia e Mês)">
-                          {Object.keys(stats?.curvas_distribuicao || {})
-                            .filter(k => /^[0-6]_/.test(k))
-                            .sort((a,b) => b.split('_')[1].localeCompare(a.split('_')[1]) || a.split('_')[0].localeCompare(b.split('_')[0]))
-                            .map(k => {
-                              const [diaStr, anoMes] = k.split('_');
-                              const [ano, m] = anoMes.split('-');
-                              const diasLabel = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
-                              const nomeMes = new Date(parseInt(ano), parseInt(m) - 1, 1).toLocaleString('pt-BR', { month: 'short' });
-                              return <option key={k} value={k}>{diasLabel[parseInt(diaStr)]} - {nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)}/{ano}</option>;
-                            })
-                          }
-                        </optgroup>
-                      </select>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="xl:col-span-3 bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
-                <h3 className="text-lg font-semibold mb-6 text-slate-200">Comparativo de Distribuição na Semana</h3>
-                <div className="h-[32rem]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                      <XAxis 
-                        dataKey="intervalo" 
-                        stroke="#94a3b8" 
-                        fontSize={12} 
-                        tickMargin={10} 
-                        type="category" 
-                        allowDuplicatedCategory={false} 
-                      />
-                      <YAxis 
-                        stroke="#94a3b8" 
-                        fontSize={12} 
-                        tickFormatter={(value) => `${(value * 100).toFixed(1)}%`} 
-                      />
-                      <RechartsTooltip 
-                        contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '0.5rem' }}
-                        itemStyle={{ color: '#e2e8f0' }}
-                        formatter={(value: any) => [`${(Number(value) * 100).toFixed(2)}%`, 'Distribuição']}
-                      />
-                      <Legend />
-                      {['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'].map((diaName, idx) => {
-                        const curveKey = dimWeeklyCurves[idx];
-                        if (curveKey === 'padrao') return null;
-                        const curveData = stats?.curvas_distribuicao?.[curveKey] || {};
-                        const dataForLine = Object.keys(curveData).map(k => ({ intervalo: k, value: curveData[k] }));
-                        const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#eab308', '#22c55e', '#14b8a6'];
-                        return (
-                          <Line
-                            key={idx}
-                            data={dataForLine}
-                            type="monotone"
-                            dataKey="value"
-                            name={diaName}
-                            stroke={colors[idx]}
-                            strokeWidth={2}
-                            dot={false}
-                            activeDot={{ r: 4 }}
-                          />
-                        );
-                      })}
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {activeTab === 'cenarios' && (
           <>
@@ -3362,7 +3231,55 @@ export default function Dashboard() {
 
             {dimSubTab === 'escala' && (<>
               <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-6 mb-6">
+                <div className="grid grid-cols-2 md:grid-cols-7 gap-6 mb-6">
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Curva de Distribuição</label>
+                    <select
+                      value={dimCurveType}
+                      onChange={e => setDimCurveType(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"
+                    >
+                      <option value="padrao">Padrão (Dia a Dia)</option>
+                      <optgroup label="Visões Gerais">
+                        <option value="consolidado">Consolidada (Geral)</option>
+                        <option value="consolidado_sem_outlier">Consolidada (Sem Outliers)</option>
+                        <option value="consolidado_desvio">Consolidada (Média + Desvio Padrão)</option>
+                        <option value="consolidado_mediana">Consolidada (Mediana)</option>
+                        <option value="0">Segunda-feira</option>
+                        <option value="1">Terça-feira</option>
+                        <option value="2">Quarta-feira</option>
+                        <option value="3">Quinta-feira</option>
+                        <option value="4">Sexta-feira</option>
+                        <option value="5">Sábado</option>
+                        <option value="6">Domingo</option>
+                      </optgroup>
+                      <optgroup label="Consolidadas por Mês">
+                        {Object.keys(stats?.curvas_distribuicao || {})
+                          .filter(k => k.startsWith('consolidado_') && !['consolidado_sem_outlier', 'consolidado_desvio', 'consolidado_mediana'].includes(k))
+                          .sort((a,b) => b.localeCompare(a)) // Mais recentes primeiro
+                          .map(k => {
+                            const [_, ano, m] = k.split(/_|-/);
+                            const nomeMes = new Date(parseInt(ano), parseInt(m) - 1, 1).toLocaleString('pt-BR', { month: 'short' });
+                            const label = `Consolidada - ${nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)}/${ano}`;
+                            return <option key={k} value={k}>{label}</option>;
+                          })
+                        }
+                      </optgroup>
+                      <optgroup label="Curvas Específicas (Dia e Mês)">
+                        {Object.keys(stats?.curvas_distribuicao || {})
+                          .filter(k => /^[0-6]_/.test(k))
+                          .sort((a,b) => b.split('_')[1].localeCompare(a.split('_')[1]) || a.split('_')[0].localeCompare(b.split('_')[0])) // Ordenar por mês desc, depois por dia asc
+                          .map(k => {
+                            const [diaStr, anoMes] = k.split('_');
+                            const [ano, m] = anoMes.split('-');
+                            const diasLabel = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+                            const nomeMes = new Date(parseInt(ano), parseInt(m) - 1, 1).toLocaleString('pt-BR', { month: 'short' });
+                            return <option key={k} value={k}>{diasLabel[parseInt(diaStr)]} - {nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)}/{ano}</option>;
+                          })
+                        }
+                      </optgroup>
+                    </select>
+                  </div>
                   <div>
                     <label className="block text-sm text-slate-400 mb-1">SLA Alvo (%)</label>
                     <input type="number" min="10" max="100" value={dimTargetSlaPercent} onChange={e => setDimTargetSlaPercent(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" />
