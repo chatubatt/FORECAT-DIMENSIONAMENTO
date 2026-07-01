@@ -1322,7 +1322,6 @@ class CallCenterForecaster:
             })
         
         # Calcular DMM (Dia de Maior Movimento) e HMM (Hora de Maior Movimento) projetados
-        import holidays
         br_holidays = holidays.Brazil()
         feriados = []
         dias_excluidos = []
