@@ -19,7 +19,13 @@ class CallCenterForecaster:
         self.distribution_curve = {}
         self.history_stats = {}
         self.is_trained = False
-        
+        # Ensemble support
+        self._use_ensemble = False
+        self._ensemble_models = []
+        self._ensemble_weights = []
+        # Confidence interval support
+        self._forecast_std = 0.0
+
     def _extract_features(self, df, add_lags=False):
         """Extrai features de data para o modelo de ML.
         
@@ -38,6 +44,12 @@ class CallCenterForecaster:
         df_features['dia_semana'] = df_features['data'].dt.dayofweek
         df_features['dia_mes'] = df_features['data'].dt.day
         df_features['mes'] = df_features['data'].dt.month
+
+        # Cyclical encoding for seasonal features (sin/cos)
+        df_features['dia_semana_sin'] = np.sin(2 * np.pi * df_features['dia_semana'] / 7)
+        df_features['dia_semana_cos'] = np.cos(2 * np.pi * df_features['dia_semana'] / 7)
+        df_features['mes_sin'] = np.sin(2 * np.pi * df_features['mes'] / 12)
+        df_features['mes_cos'] = np.cos(2 * np.pi * df_features['mes'] / 12)
         
         # Feature: Dia Útil do Mês (1º dia útil, 2º dia útil, etc.)
         def get_dia_util_mes(data_obj):
@@ -193,16 +205,18 @@ class CallCenterForecaster:
         else:
             df_features['tmo'] = df_features['tmo'].fillna(df_features['tmo'].median())
         
-        # Features compactas e comprovadas
+        # Features compactas e comprovadas (including cyclical encoding)
         FEATURE_COLS = [
             'dia_semana', 'dia_mes', 'mes', 'dia_util_mes',
             'is_feriado', 'is_vespera_feriado',
-            'is_5o_dia_util', 'is_dia_20'
+            'is_5o_dia_util', 'is_dia_20',
+            'dia_semana_sin', 'dia_semana_cos', 'mes_sin', 'mes_cos'
         ]
         FEATURE_LABELS = [
             'Dia da Semana', 'Dia do Mês', 'Mês', 'Dia Útil do Mês',
             'É Feriado/FDS', 'Véspera Feriado',
-            '5º Dia Útil (Pagamento)', 'Dia 20 (Vencimentos)'
+            '5º Dia Útil (Pagamento)', 'Dia 20 (Vencimentos)',
+            'Dia Semana (sin)', 'Dia Semana (cos)', 'Mês (sin)', 'Mês (cos)'
         ]
         self._feature_cols = FEATURE_COLS
         
@@ -265,16 +279,51 @@ class CallCenterForecaster:
             for name in modelos_candidatos:
                 model_scores.append({"modelo": name, "erro_mae": 0.0, "acuracidade": 0.0})
 
-        # Escolher campeão (modelo único, sem ensemble)
+        # Ensemble ponderado: top 3 modelos por MAE inverso
         model_scores.sort(key=lambda x: x["erro_mae"])
         campeao_nome = model_scores[0]["modelo"]
-        self.vol_model = modelos_candidatos[campeao_nome]
-        self.vol_model.fit(X, df_features['volume'])
-        self._use_ensemble = False
+
+        # Filter out models with zero MAE (insufficient data case)
+        valid_scores = [s for s in model_scores if s["erro_mae"] > 0]
+        if len(valid_scores) >= 3:
+            top3 = valid_scores[:3]
+        elif len(valid_scores) >= 2:
+            top3 = valid_scores[:2]
+        elif len(valid_scores) >= 1:
+            top3 = valid_scores[:1]
+        else:
+            # Fallback: use champion only
+            top3 = model_scores[:1]
+
+        # Calculate inverse-MAE weights
+        inv_maes = [1.0 / s["erro_mae"] for s in top3]
+        total_inv = sum(inv_maes)
+        weights = [w / total_inv for w in inv_maes]
+
+        # Fit top models on full data
+        self._ensemble_models = []
+        self._ensemble_weights = []
+        for score_entry in top3:
+            name = score_entry["modelo"]
+            model = modelos_candidatos[name]
+            model.fit(X, df_features['volume'])
+            self._ensemble_models.append(model)
+
+        self._ensemble_weights = weights
+        self._use_ensemble = len(self._ensemble_models) > 1
+
+        # Keep champion reference for feature importances etc.
+        self.vol_model = self._ensemble_models[0]
         
         # O TMO usará Random Forest por padrão
         self.tmo_model = RandomForestRegressor(n_estimators=100, random_state=42)
         self.tmo_model.fit(X, df_features['tmo'])
+
+        # Calculate forecast standard deviation from training residuals (for confidence intervals)
+        y_pred_train = self._predict_volume(X)
+        residuals = df_features['volume'].values - y_pred_train
+        self._forecast_std = float(np.std(residuals))
+        self.history_stats['forecast_std'] = round(self._forecast_std, 2)
 
         # Armazenar metadados da metodologia para exibição no frontend
         tmo_tem_dado = not df_daily['tmo'].eq(240.0).all()
@@ -292,10 +341,12 @@ class CallCenterForecaster:
         
         validacao_tipo = f"TimeSeriesSplit ({n_splits} dobras temporais)" if len(df_features) > 15 else "Dados insuficientes para validação cruzada"
         
+        ensemble_desc = f"Ensemble ponderado ({len(self._ensemble_models)} modelos)" if self._use_ensemble else campeao_nome
         sazonalidade_texto = (
-            f"A sazonalidade foi calculada cruzando 6 variáveis de calendário "
-            f"(dia da semana, dia do mês, mês, dia útil, feriado e véspera de feriado). "
-            f"O algoritmo '{campeao_nome}' mapeou as tendências históricas para projetar o volume."
+            f"A sazonalidade foi calculada cruzando 10 variáveis de calendário "
+            f"(dia da semana, dia do mês, mês, dia útil, feriado, véspera de feriado, "
+            f"e encoding ciclico sin/cos para dia da semana e mês). "
+            f"O algoritmo '{ensemble_desc}' mapeou as tendências históricas para projetar o volume."
         )
         flutuacao_texto = (
             f"A flutuação foi tratada com remoção de {self.history_stats.get('outliers_removidos', 0)} "
@@ -304,7 +355,7 @@ class CallCenterForecaster:
         )
 
         self.history_stats['metodologia'] = {
-            'algoritmo_volume': campeao_nome,
+            'algoritmo_volume': ensemble_desc,
             'modelos_testados': model_scores,
             'sazonalidade_explicacao': sazonalidade_texto,
             'flutuacao_explicacao': flutuacao_texto,
@@ -672,6 +723,36 @@ class CallCenterForecaster:
             
         self.history_stats['baseline_meses'] = baseline_meses
 
+        # WFM Metrics: comprehensive workforce management statistics
+        avg_daily_volume = float(df_daily_stats['volume'].mean())
+        avg_tmo = float(df_daily_stats['tmo'].mean()) if 'tmo' in df_daily_stats.columns and df_daily_stats['tmo'].notna().any() else 240.0
+        std_daily_volume = float(df_daily_stats['volume'].std())
+        volatility_index = round(std_daily_volume / avg_daily_volume, 4) if avg_daily_volume > 0 else 0.0
+
+        # Peak hour: hour with highest avg volume (from interval data)
+        peak_hour = "N/A"
+        if 'intervalo' in df_history.columns and not df_history['intervalo'].isna().all():
+            vol_by_interval = df_history.groupby('intervalo')['volume'].mean()
+            if not vol_by_interval.empty:
+                peak_interval = vol_by_interval.idxmax()
+                # Convert interval like "14:00" to hour "14h"
+                peak_hour = f"{peak_interval}"
+
+        # Weekday vs weekend ratio
+        weekday_vols = df_daily_stats[df_daily_stats['data'].dt.dayofweek < 5]['volume']
+        weekend_vols = df_daily_stats[df_daily_stats['data'].dt.dayofweek >= 5]['volume']
+        weekday_avg = float(weekday_vols.mean()) if not weekday_vols.empty else 0.0
+        weekend_avg = float(weekend_vols.mean()) if not weekend_vols.empty else 1.0
+        weekday_weekend_ratio = round(weekday_avg / weekend_avg, 2) if weekend_avg > 0 else 0.0
+
+        self.history_stats['wfm_metrics'] = {
+            "avg_daily_volume": round(avg_daily_volume, 1),
+            "avg_tmo": round(avg_tmo, 1),
+            "peak_hour": peak_hour,
+            "volatility_index": volatility_index,
+            "weekday_weekend_ratio": weekday_weekend_ratio,
+        }
+
         self.is_trained = True
         return {"status": "Treinamento concluído com sucesso"}
         
@@ -695,13 +776,23 @@ class CallCenterForecaster:
             
         return preds.astype(int)
 
-    def _distribute_volume(self, total_vol, curva_dia, tmo_previsto):
+    def _distribute_volume(self, total_vol, curva_dia, tmo_previsto, tmo_per_interval=None):
+        """Distribui o volume total diário nos intervalos da curva intra-diária.
+
+        Args:
+            total_vol: Volume total previsto para o dia.
+            curva_dia: Dict {intervalo: proporção} para o dia da semana.
+            tmo_previsto: TMO médio previsto para o dia (fallback).
+            tmo_per_interval: Optional dict {intervalo: tmo} com TMO específico por intervalo.
+        """
         dist_vols = []
         for interv, prop in sorted(curva_dia.items()):
             exact = total_vol * prop
             int_part = int(exact)
             frac = exact - int_part
-            dist_vols.append({"intervalo": interv, "volume": int_part, "frac": frac})
+            # Use per-interval TMO if available, otherwise fall back to daily TMO
+            tmo = int(tmo_per_interval.get(interv, tmo_previsto)) if tmo_per_interval else int(tmo_previsto)
+            dist_vols.append({"intervalo": interv, "volume": int_part, "frac": frac, "tmo": tmo})
             
         sum_ints = sum(x["volume"] for x in dist_vols)
         rem = int(total_vol) - sum_ints
@@ -718,9 +809,60 @@ class CallCenterForecaster:
             intervalos.append({
                 "intervalo": dv["intervalo"],
                 "volume": dv["volume"],
-                "tmo": int(tmo_previsto)
+                "tmo": dv["tmo"]
             })
         return intervalos
+
+    def _estimate_abandon_rate(self, agents, traffic, tmo, avg_patience_time=60):
+        """Estimates call abandon rate using Erlang C and average patience time.
+
+        Uses the formula:
+            P(abandon) = P(wait) * exp(-(agents - traffic) * (patience_time / tmo))
+
+        Args:
+            agents: Number of agents (after shrinkage).
+            traffic: Traffic in Erlangs (volume * tmo / interval_seconds).
+            tmo: Average handling time in seconds.
+            avg_patience_time: Average caller patience time in seconds (default 60s).
+
+        Returns:
+            Abandon rate as a float between 0.0 and 1.0.
+        """
+        if agents <= 0 or traffic <= 0 or tmo <= 0:
+            return 0.0
+
+        # If system is overloaded, all callers who wait will eventually abandon
+        if agents <= traffic:
+            return 1.0
+
+        # Calculate Erlang C probability P(wait > 0)
+        # Using Erlang B inversion method
+        invB = 1.0
+        for i in range(1, agents + 1):
+            invB = 1.0 + invB * (i / traffic)
+        erlangB = 1.0 / invB
+
+        prob_wait = erlangB / (1.0 - (traffic / agents) * (1.0 - erlangB))
+
+        # Abandon rate formula
+        abandon_rate = prob_wait * np.exp(-(agents - traffic) * (avg_patience_time / tmo))
+
+        return float(min(1.0, max(0.0, abandon_rate)))
+
+    def _get_tmo_per_interval(self, dia_semana):
+        """Look up per-interval TMO from the historical TMO matrix for a given day_of_week.
+
+        Returns:
+            Dict {intervalo: tmo_value} or empty dict if no data available.
+        """
+        matrizes_tmo = self.history_stats.get('matrizes_tmo', {})
+        tmo_matrix = matrizes_tmo.get('completo', {})
+        tmo_per_interval = {}
+        for interv_key, dow_vals in tmo_matrix.items():
+            tmo_val = dow_vals.get(dia_semana, 0)
+            if tmo_val and tmo_val > 0:
+                tmo_per_interval[interv_key] = tmo_val
+        return tmo_per_interval
 
     def get_stats(self):
         if not self.is_trained:
@@ -743,18 +885,27 @@ class CallCenterForecaster:
         df_pred['volume_previsto'] = self._predict_volume(X)
         df_pred['tmo_previsto'] = self.tmo_model.predict(X).astype(int)
         
+        forecast_std = getattr(self, '_forecast_std', 0.0)
+        
         # Gerar a curva intra-diária
         resultados = []
         for _, row in df_pred.iterrows():
             dia_semana = row['data'].weekday()
             curva_dia = self.distribution_curve.get(dia_semana, {})
             
-            intervalos = self._distribute_volume(row['volume_previsto'], curva_dia, row['tmo_previsto'])
+            # Per-interval TMO lookup
+            tmo_per_interval = self._get_tmo_per_interval(dia_semana)
+            intervalos = self._distribute_volume(
+                row['volume_previsto'], curva_dia, row['tmo_previsto'],
+                tmo_per_interval=tmo_per_interval
+            )
                 
             resultados.append({
                 "data": row['data'].isoformat(),
                 "volume_total": row['volume_previsto'],
                 "tmo_medio": row['tmo_previsto'],
+                "volume_lower": max(0, int(row['volume_previsto'] - forecast_std)),
+                "volume_upper": int(row['volume_previsto'] + forecast_std),
                 "intervalos": intervalos
             })
             
@@ -776,17 +927,26 @@ class CallCenterForecaster:
         df_pred['volume_previsto'] = self._predict_volume(X)
         df_pred['tmo_previsto'] = self.tmo_model.predict(X).astype(int)
         
+        forecast_std = getattr(self, '_forecast_std', 0.0)
+        
         resultados = []
         for _, row in df_pred.iterrows():
             dia_semana = row['data'].weekday()
             curva_dia = self.distribution_curve.get(dia_semana, {})
             
-            intervalos = self._distribute_volume(row['volume_previsto'], curva_dia, row['tmo_previsto'])
+            # Per-interval TMO lookup
+            tmo_per_interval = self._get_tmo_per_interval(dia_semana)
+            intervalos = self._distribute_volume(
+                row['volume_previsto'], curva_dia, row['tmo_previsto'],
+                tmo_per_interval=tmo_per_interval
+            )
                 
             resultados.append({
                 "data": row['data'].isoformat(),
                 "volume_total": row['volume_previsto'],
                 "tmo_medio": row['tmo_previsto'],
+                "volume_lower": max(0, int(row['volume_previsto'] - forecast_std)),
+                "volume_upper": int(row['volume_previsto'] + forecast_std),
                 "intervalos": intervalos
             })
             
@@ -858,6 +1018,32 @@ class CallCenterForecaster:
             # Inverter para mostrar do mais recente pro mais antigo
             anos_anteriores.reverse()
             ultimos_3_meses.reverse()
+
+        # Confidence intervals summary
+        avg_daily_forecast = volume_projetado / len(resultados) if resultados else 0
+        confidence_intervals = {
+            "std_dev": round(forecast_std, 2),
+            "avg_daily_volume": round(avg_daily_forecast, 1),
+            "avg_lower_1std": max(0, int(avg_daily_forecast - forecast_std)),
+            "avg_upper_1std": int(avg_daily_forecast + forecast_std),
+            "avg_lower_2std": max(0, int(avg_daily_forecast - 2 * forecast_std)),
+            "avg_upper_2std": int(avg_daily_forecast + 2 * forecast_std),
+        }
+
+        # Aggregate abandon rate estimate for the month
+        # Use average forecasted day parameters for a representative estimate
+        avg_tmo_forecast = float(df_pred['tmo_previsto'].mean()) if len(df_pred) > 0 else 240
+        avg_volume_forecast = avg_daily_forecast
+        # Assume typical 30-min intervals, 08:00-20:00 = 24 intervals, 600s each
+        interval_seconds = 600
+        num_intervals = 24
+        avg_interval_volume = avg_volume_forecast / num_intervals if num_intervals > 0 else 0
+        traffic_erlangs = (avg_interval_volume / interval_seconds) * avg_tmo_forecast
+        # Assume agents ≈ traffic * 1.3 (typical overstaffing for SLA)
+        est_agents = max(1, int(np.ceil(traffic_erlangs * 1.3)))
+        est_abandon_rate = self._estimate_abandon_rate(
+            est_agents, traffic_erlangs, avg_tmo_forecast, avg_patience_time=60
+        )
         
         return {
             "dias": resultados,
@@ -875,7 +1061,9 @@ class CallCenterForecaster:
                 "dias_excluidos": dias_excluidos,
                 "data_inicio": self.history_stats.get('data_inicio'),
                 "data_fim": self.history_stats.get('data_fim'),
-                "curvas_distribuicao": self.distribution_curve
+                "curvas_distribuicao": self.distribution_curve,
+                "confidence_intervals": confidence_intervals,
+                "estimated_abandon_rate": round(est_abandon_rate * 100, 2),
             }
         }
 

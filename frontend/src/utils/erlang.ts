@@ -6,6 +6,10 @@ export interface ErlangResult {
   occupancy: number; // %
   probabilityOfWait: number; // %
   asa: number; // Average Speed of Answer in seconds
+  erlangB: number;           // Blocking probability
+  abandonRate: number;       // Estimated abandon rate %
+  avgWaitTime: number;       // Average wait time for those who wait
+  costPerInterval: number;   // Estimated cost for this interval
 }
 
 export interface ErlangInputs {
@@ -18,6 +22,108 @@ export interface ErlangInputs {
   maxOccupancy?: number; // e.g., 0.85 for 85%
   fixedAgents?: number; // Set if user limits PAs
   fixedTma?: number; // User-provided override for TMA
+  costPerAgentMonth?: number; // For costPerInterval calculation (default 5000)
+}
+
+/**
+ * Calculates Erlang B Probability (Blocking Probability)
+ * P(blocked) = (A^N / N!) / sum(A^k / k! for k=0..N)
+ * Used for systems where blocked calls are lost (no queue)
+ */
+export function calcErlangB(agents: number, traffic: number): number {
+  if (agents <= 0) return 1.0;
+  if (traffic <= 0) return 0.0;
+
+  let invB = 1.0;
+  for (let i = 1; i <= agents; i++) {
+    invB = 1.0 + invB * (i / traffic);
+  }
+  return 1.0 / invB;
+}
+
+/**
+ * Estimates call abandon rate using Erlang C and patience time distribution.
+ * Uses the assumption of exponential patience time (M/M/N + M queue).
+ *
+ * P(abandon) = P(wait) * (traffic / (traffic + (agents - traffic) * (tmo / patienceTime)))
+ */
+export function estimateAbandonRate(
+  agents: number,
+  traffic: number,
+  tmo: number,
+  patienceTime: number = 60, // Average patience time in seconds (default 60s)
+  shrinkage: number = 0
+): {
+  abandonRate: number;
+  probWait: number;
+  avgWaitTime: number;
+  avgAbandonTime: number;
+} {
+  if (agents <= traffic || traffic <= 0) {
+    return { abandonRate: agents <= traffic && traffic > 0 ? 95 : 0, probWait: agents <= traffic && traffic > 0 ? 100 : 0, avgWaitTime: 999, avgAbandonTime: patienceTime };
+  }
+
+  const probWait = calcErlangC(agents, traffic);
+  const waitTime = (probWait * tmo) / (agents - traffic);
+
+  // Patience factor: theta = 1/patienceTime, mu = 1/tmo
+  const theta = 1 / patienceTime;
+  const mu = 1 / tmo;
+
+  // P(abandon) = P(wait) * (theta / (theta + mu * (agents - traffic)))
+  const denom = theta + mu * (agents - traffic);
+  const abandonRate = probWait * (denom > 0 ? theta / denom : 1);
+
+  // Average time in queue for those who wait
+  const avgWaitTime = waitTime;
+
+  // Average time before abandoning (for those who abandon)
+  const avgAbandonTime = Math.min(patienceTime, waitTime);
+
+  return {
+    abandonRate: Math.max(0, Math.min(100, abandonRate * 100)),
+    probWait: probWait * 100,
+    avgWaitTime,
+    avgAbandonTime
+  };
+}
+
+export interface CostEstimate {
+  costPerAgentMonth: number;
+  costPerAgentHour: number;
+  totalMonthlyCost: number;
+  costPerCall: number;
+  costPerErlang: number;
+  productivity: number; // calls per agent per hour
+}
+
+/**
+ * Calculates operational cost estimates for staffing
+ */
+export function calculateCostEstimate(
+  totalMonthlyHC: number,
+  monthlyVolume: number,
+  avgTmo: number,
+  costPerAgentMonth: number = 5000,
+  overheadPercent: number = 30,
+  workingHoursPerMonth: number = 160
+): CostEstimate {
+  const totalCost = totalMonthlyHC * costPerAgentMonth * (1 + overheadPercent / 100);
+  const costPerAgentHour = (costPerAgentMonth * (1 + overheadPercent / 100)) / workingHoursPerMonth;
+  const costPerCall = monthlyVolume > 0 ? totalCost / monthlyVolume : 0;
+
+  // Productivity: how many calls an agent handles per hour
+  // Each call takes avgTmo seconds, so calls per hour = 3600 / avgTmo
+  const callsPerAgentPerHour = avgTmo > 0 ? 3600 / avgTmo : 0;
+
+  return {
+    costPerAgentMonth: Math.round(costPerAgentMonth * (1 + overheadPercent / 100)),
+    costPerAgentHour: Math.round(costPerAgentHour * 100) / 100,
+    totalMonthlyCost: Math.round(totalCost),
+    costPerCall: Math.round(costPerCall * 100) / 100,
+    costPerErlang: 0, // Placeholder
+    productivity: Math.round(callsPerAgentPerHour * 10) / 10
+  };
 }
 
 /**
@@ -44,23 +150,33 @@ export function evaluateErlangConfig(
   traffic: number,
   tmo: number,
   targetSlaTime: number,
-  shrinkage: number
+  shrinkage: number,
+  patienceTime: number = 60
 ): ErlangResult {
   const probWait = calcErlangC(agents, traffic);
+  const erlangB = calcErlangB(agents, traffic);
   
   let serviceLevel = 0;
   let asa = 0;
   let occupancy = 0;
+  let avgWaitTime = 0;
+  let abandonRate = 0;
 
   if (agents > traffic) {
     serviceLevel = 1.0 - probWait * Math.exp(-(agents - traffic) * (targetSlaTime / tmo));
     asa = (probWait * tmo) / (agents - traffic);
     occupancy = traffic / agents;
+    avgWaitTime = asa;
+    const abandon = estimateAbandonRate(agents, traffic, tmo, patienceTime, shrinkage);
+    abandonRate = abandon.abandonRate;
+    avgWaitTime = abandon.avgWaitTime;
   } else {
     // Overloaded system
     serviceLevel = 0;
     asa = 9999; // Arbitrary high number for overloaded
     occupancy = 1.0;
+    avgWaitTime = 999;
+    abandonRate = traffic > 0 ? 95 : 0;
   }
 
   // Cap service level at 1.0 (100%) and 0.0
@@ -75,7 +191,11 @@ export function evaluateErlangConfig(
     serviceLevel: serviceLevel * 100, // as percentage
     occupancy: occupancy * 100, // as percentage
     probabilityOfWait: probWait * 100, // as percentage
-    asa
+    asa,
+    erlangB: Math.round(erlangB * 10000) / 10000,
+    abandonRate: Math.round(abandonRate * 10) / 10,
+    avgWaitTime: Math.round(avgWaitTime * 10) / 10,
+    costPerInterval: 0
   };
 }
 
@@ -88,7 +208,9 @@ export function findMinAgents(inputs: ErlangInputs): ErlangResult {
     // If the user forced a maximum number of PAs
     // Calculate the base agents before shrinkage
     const baseFixedAgents = Math.floor(inputs.fixedAgents * (1 - inputs.shrinkage));
-    return evaluateErlangConfig(Math.max(1, baseFixedAgents), traffic, tmo, inputs.targetSlaTime, inputs.shrinkage);
+    const result = evaluateErlangConfig(Math.max(1, baseFixedAgents), traffic, tmo, inputs.targetSlaTime, inputs.shrinkage);
+    result.costPerInterval = computeCostPerInterval(result.requiredAgents, inputs);
+    return result;
   }
 
   // Iterate to find agents meeting SLA
@@ -108,7 +230,20 @@ export function findMinAgents(inputs: ErlangInputs): ErlangResult {
     }
   }
 
+  // Compute cost per interval
+  currentResult.costPerInterval = computeCostPerInterval(currentResult.requiredAgents, inputs);
+
   return currentResult;
+}
+
+/**
+ * Computes the estimated cost for a single interval based on required agents.
+ */
+function computeCostPerInterval(requiredAgents: number, inputs: ErlangInputs): number {
+  const costPerAgentMonth = inputs.costPerAgentMonth || 5000;
+  const workingHoursPerMonth = 160;
+  const costPerAgentSecond = (costPerAgentMonth / workingHoursPerMonth) / 3600;
+  return Math.round(requiredAgents * costPerAgentSecond * inputs.intervalSeconds * 100) / 100;
 }
 
 export type SlaStrategy = 'strict_daily' | 'monthly_avg' | 'weekly_avg' | 'rule_80_20';
@@ -179,7 +314,8 @@ export function calculateStaffingStrategy(
         res = {
           agents: 0, requiredAgents: 0, traffic: 0,
           serviceLevel: interval.volume > 0 ? 0 : 100, // Se fechado mas tem vol = abandono total
-          occupancy: 0, probabilityOfWait: interval.volume > 0 ? 100 : 0, asa: interval.volume > 0 ? 9999 : 0
+          occupancy: 0, probabilityOfWait: interval.volume > 0 ? 100 : 0, asa: interval.volume > 0 ? 9999 : 0,
+          erlangB: 0, abandonRate: interval.volume > 0 ? 95 : 0, avgWaitTime: interval.volume > 0 ? 999 : 0, costPerInterval: 0
         };
       } else {
         res = findMinAgents({
@@ -250,4 +386,51 @@ export function calculateStaffingStrategy(
 
   // Atualiza as propriedades base
   return allIntervals;
+}
+
+export interface SensitivityResult {
+  volumeChangePct: number;
+  volume: number;
+  erlangs: number;
+  baseAgents: number;
+  requiredAgents: number;
+  sla: number;
+  occupancy: number;
+  asa: number;
+  abandonRate: number;
+}
+
+export function calculateSLASensitivity(
+  baseVolume: number,
+  tmo: number,
+  intervalSeconds: number,
+  targetSlaPercent: number,
+  targetSlaTime: number,
+  shrinkage: number,
+  variations: number[] = [-30, -20, -10, 0, 10, 20, 30]
+): SensitivityResult[] {
+  return variations.map(pct => {
+    const vol = Math.round(baseVolume * (1 + pct / 100));
+    const inputs: ErlangInputs = {
+      volume: vol,
+      tmo,
+      intervalSeconds,
+      targetSlaPercent: targetSlaPercent / 100,
+      targetSlaTime,
+      shrinkage: shrinkage / 100
+    };
+    const result = findMinAgents(inputs);
+    const abandon = estimateAbandonRate(result.agents, result.traffic, tmo, 60, shrinkage / 100);
+    return {
+      volumeChangePct: pct,
+      volume: vol,
+      erlangs: Math.round(result.traffic * 100) / 100,
+      baseAgents: result.agents,
+      requiredAgents: result.requiredAgents,
+      sla: Math.round(result.serviceLevel * 10) / 10,
+      occupancy: Math.round(result.occupancy * 10) / 10,
+      asa: Math.round(result.asa * 10) / 10,
+      abandonRate: Math.round(abandon.abandonRate * 10) / 10
+    };
+  });
 }

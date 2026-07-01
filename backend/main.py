@@ -233,6 +233,151 @@ def get_stats(celula: str = "Todas"):
         return {"stats": None}
     return {"stats": stats}
 
+@app.post("/wfm-cost")
+async def calculate_wfm_cost(
+    total_monthly_hc: int = Form(...),
+    cost_per_agent_month: float = Form(5000.0),
+    overhead_percent: float = Form(30.0),
+    additional_hours_percent: float = Form(0.0),
+    hourly_rate: float = Form(25.0)
+):
+    """
+    Calcula custo operacional do dimensionamento.
+    Returns: base_cost, overhead_cost, total_cost, cost_per_call (if volume provided), productivity_metrics
+    """
+    # Calculate costs
+    base_cost = total_monthly_hc * cost_per_agent_month
+    overhead_cost = base_cost * (overhead_percent / 100)
+    total_cost = base_cost + overhead_cost
+    hourly_cost = total_monthly_hc * hourly_rate * 160  # 160 hours/month avg
+    
+    return {
+        "total_monthly_hc": total_monthly_hc,
+        "base_salary_cost": round(base_cost, 2),
+        "overhead_cost": round(overhead_cost, 2),
+        "total_monthly_cost": round(total_cost, 2),
+        "cost_per_agent_month": cost_per_agent_month,
+        "hourly_cost_estimate": round(hourly_cost, 2),
+        "cost_per_working_hour": round(total_cost / (total_monthly_hc * 160) if total_monthly_hc > 0 else 0, 2)
+    }
+
+@app.get("/sla-sensitivity")
+def sla_sensitivity(
+    base_volume: int = 10000,
+    tmo: int = 240,
+    interval_seconds: int = 600,
+    target_sla_percent: float = 80.0,
+    target_sla_time: int = 20,
+    shrinkage: float = 18.47
+):
+    """
+    Analisa sensibilidade do SLA a variações de volume (-30% a +30%).
+    """
+    results = []
+    for pct in [-30, -20, -10, 0, 10, 20, 30]:
+        vol = int(base_volume * (1 + pct / 100))
+        traffic = (vol / interval_seconds) * tmo
+        
+        # Find min agents
+        agents = max(1, int(traffic) + 1)
+        # Simple Erlang C inline
+        prob_wait = 1.0
+        if agents > traffic:
+            invB = 1.0
+            for i in range(1, agents + 1):
+                invB = 1.0 + invB * (i / traffic)
+            erlangB = 1.0 / invB
+            prob_wait = erlangB / (1.0 - (traffic / agents) * (1.0 - erlangB))
+        
+        sla = 0
+        asa = 0
+        occupancy = 0
+        if agents > traffic:
+            sla = (1.0 - prob_wait * np.exp(-(agents - traffic) * (target_sla_time / tmo))) * 100
+            asa = (prob_wait * tmo) / (agents - traffic)
+            occupancy = (traffic / agents) * 100
+        
+        required = max(1, int(np.ceil(agents / (1 - shrinkage / 100))))
+        
+        results.append({
+            "volume_change_pct": pct,
+            "volume": vol,
+            "erlangs": round(traffic, 2),
+            "base_agents": agents,
+            "required_agents": required,
+            "sla": round(max(0, min(100, sla)), 1),
+            "occupancy": round(min(100, occupancy), 1),
+            "asa": round(asa, 1)
+        })
+    
+    return {"sensitivity": results}
+
+@app.post("/abandon-rate")
+def calculate_abandon_rate(
+    volume: int = Form(...),
+    tmo: int = Form(...),
+    agents: int = Form(...),
+    sla_time: int = Form(20),
+    patience_time: int = Form(60),
+    interval_seconds: int = Form(600)
+):
+    """
+    Calcula a taxa de abandono estimada usando Erlang C e tempo médio de paciência.
+
+    Args:
+        volume: Volume total de chamadas no intervalo
+        tmo: Tempo médio de operação (segundos)
+        agents: Número de agentes posicionados
+        sla_time: Tempo alvo de SLA em segundos
+        patience_time: Tempo médio de paciência do chamador em segundos
+        interval_seconds: Duração do intervalo em segundos (default 600 = 10 min)
+    """
+    if volume <= 0 or tmo <= 0 or agents <= 0:
+        raise HTTPException(status_code=400, detail="volume, tmo e agents devem ser maiores que zero.")
+
+    traffic = (volume / interval_seconds) * tmo
+
+    # Get the global model to use the abandon rate calculator
+    model = forecaster.get_model("Todas")
+    if model and model.is_trained:
+        abandon_rate = model._estimate_abandon_rate(agents, traffic, tmo, patience_time)
+    else:
+        # Fallback: compute inline
+        if agents <= traffic:
+            abandon_rate = 1.0
+        else:
+            invB = 1.0
+            for i in range(1, agents + 1):
+                invB = 1.0 + invB * (i / traffic)
+            erlangB = 1.0 / invB
+            prob_wait = erlangB / (1.0 - (traffic / agents) * (1.0 - erlangB))
+            abandon_rate = prob_wait * np.exp(-(agents - traffic) * (patience_time / tmo))
+            abandon_rate = float(min(1.0, max(0.0, abandon_rate)))
+
+    # Also compute SLA for reference
+    sla = 0.0
+    prob_wait = 0.0
+    if agents > traffic:
+        invB = 1.0
+        for i in range(1, agents + 1):
+            invB = 1.0 + invB * (i / traffic)
+        erlangB = 1.0 / invB
+        prob_wait = erlangB / (1.0 - (traffic / agents) * (1.0 - erlangB))
+        sla = (1.0 - prob_wait * np.exp(-(agents - traffic) * (sla_time / tmo))) * 100
+
+    return {
+        "volume": volume,
+        "tmo": tmo,
+        "agents": agents,
+        "erlangs": round(traffic, 2),
+        "patience_time": patience_time,
+        "sla_time": sla_time,
+        "prob_wait": round(prob_wait * 100, 2),
+        "sla_percent": round(max(0, min(100, sla)), 2),
+        "abandon_rate_percent": round(abandon_rate * 100, 2),
+        "occupancy_percent": round(min(100, (traffic / agents) * 100), 1) if agents > 0 else 0
+    }
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

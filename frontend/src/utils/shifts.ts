@@ -37,6 +37,11 @@ export interface ShiftScheduleResult {
   activePerInterval: Record<string, number>[];
   coverage: number[]; // resulting coverage per interval
   costScore: number;
+  efficiency: number;        // coverage / required ratio (ideal = 1.0)
+  overstaffedIntervals: number;  // intervals where coverage > required * 1.2
+  understaffedIntervals: number; // intervals where coverage < required
+  maxOverstaff: number;     // max excess agents in any interval
+  totalWastedMinutes: number; // total minutes of overstaffing
 }
 
 /**
@@ -59,7 +64,9 @@ export function calculateShifts(
       schedules: [], totalDailyHC: 0, totalMonthlyHC: 0, 
       hcPerShiftType: {}, entradasPerInterval: [], 
       activePerInterval: [],
-      coverage: [], costScore: 0 
+      coverage: [], costScore: 0,
+      efficiency: 0, overstaffedIntervals: 0, understaffedIntervals: 0,
+      maxOverstaff: 0, totalWastedMinutes: 0
     };
   }
 
@@ -107,8 +114,7 @@ export function calculateShifts(
             wasted++;
           }
         }
-        
-        // Penalize wasted coverage outside operating hours
+// Penalize wasted coverage outside operating hours
         const overflow = shift.intervalsCovered - (limit - s);
         wasted += overflow;
         
@@ -183,6 +189,35 @@ export function calculateShifts(
     }
   });
 
+  // Compute efficiency metrics
+  let overstaffedIntervals = 0;
+  let understaffedIntervals = 0;
+  let maxOverstaff = 0;
+  let totalWastedMinutes = 0;
+  let totalCoverage = 0;
+  let totalRequired = 0;
+
+  for (let i = 0; i < numIntervals; i++) {
+    const cov = coverage[i];
+    const req = requiredAgentsPerInterval[i];
+    totalCoverage += cov;
+    totalRequired += req;
+
+    if (req > 0) {
+      if (cov > req * 1.2) {
+        overstaffedIntervals++;
+        const excess = cov - req;
+        if (excess > maxOverstaff) maxOverstaff = excess;
+        totalWastedMinutes += excess * 10; // each interval is 10 minutes
+      }
+      if (cov < req) {
+        understaffedIntervals++;
+      }
+    }
+  }
+
+  const efficiency = totalRequired > 0 ? totalCoverage / totalRequired : 0;
+
   return {
     schedules,
     totalDailyHC: totalDaily,
@@ -191,7 +226,12 @@ export function calculateShifts(
     entradasPerInterval,
     activePerInterval,
     coverage,
-    costScore: 0
+    costScore: 0,
+    efficiency: Math.round(efficiency * 100) / 100,
+    overstaffedIntervals,
+    understaffedIntervals,
+    maxOverstaff,
+    totalWastedMinutes
   };
 }
 
@@ -365,4 +405,48 @@ export function allocateShifts612_812(
     peakCoverage: Math.max(0, ...coverage),
     peakNec: Math.max(0, ...nec)
   };
+}
+
+export interface ShiftCombinationCost {
+  shifts: ShiftType[];
+  totalMonthlyHC: number;
+  totalDailyHC: number;
+  estimatedCost: number;
+  efficiency: number;
+  costPerAgent: number;
+}
+
+export function compareShiftCombinations(
+  requiredAgentsPerInterval: number[],
+  intervalLabels: string[],
+  costPerAgentMonth: number = 5000,
+  overheadPercent: number = 30,
+  operatingDays: number = 7
+): ShiftCombinationCost[] {
+  // Test common combinations
+  const combinations: ShiftType[][] = [
+    ['06:20'],
+    ['08:12'],
+    ['06:20', '08:12'],
+    ['06:20', '07:12'],
+    ['07:12', '08:12'],
+    ['06:00', '06:20', '08:12'],
+    ['06:20', '07:12', '08:12'],
+    ['06:20', '08:12', '04:00'],
+    ['06:20', '08:12', '05:15'],
+    ['06:20', '08:12', '12x36'],
+  ];
+
+  return combinations.map(shifts => {
+    const result = calculateShifts(requiredAgentsPerInterval, intervalLabels, shifts, operatingDays);
+    const totalCost = result.totalMonthlyHC * costPerAgentMonth * (1 + overheadPercent / 100);
+    return {
+      shifts,
+      totalMonthlyHC: result.totalMonthlyHC,
+      totalDailyHC: result.totalDailyHC,
+      estimatedCost: Math.round(totalCost),
+      efficiency: result.efficiency,
+      costPerAgent: result.totalMonthlyHC > 0 ? Math.round(totalCost / result.totalMonthlyHC) : 0
+    };
+  }).sort((a, b) => a.estimatedCost - b.estimatedCost);
 }

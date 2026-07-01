@@ -1,8 +1,8 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, BarChart, Bar, ComposedChart } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, BarChart, Bar, ComposedChart, Area } from 'recharts';
 import { UploadCloud, Activity, Clock, CalendarDays, TrendingUp, Users } from 'lucide-react';
-import { evaluateErlangConfig, type SlaStrategy, type OperatingHoursConfig, type ErlangResult } from './utils/erlang';
-import { calculateShifts, type ShiftType, AVAILABLE_SHIFTS, allocateShifts612_812, type ShiftAllocationResult } from './utils/shifts';
+import { evaluateErlangConfig, type SlaStrategy, type OperatingHoursConfig, type ErlangResult, calculateCostEstimate, calculateSLASensitivity, type SensitivityResult, estimateAbandonRate, calcErlangB } from './utils/erlang';
+import { calculateShifts, type ShiftType, AVAILABLE_SHIFTS, allocateShifts612_812, type ShiftAllocationResult, compareShiftCombinations, type ShiftCombinationCost } from './utils/shifts';
 
 interface IntervalForecast {
   intervalo: string;
@@ -243,6 +243,12 @@ export default function Dashboard() {
   }, [dimShrinkageConfig, dimEnabledShifts]);
   const [staffingScenarios, setStaffingScenarios] = useState<SavedStaffingScenario[]>([]);
   const [dimSubTab, setDimSubTab] = useState<'escala' | 'alocacao_automatica'>('escala');
+
+  // Cost Configuration States
+  const [costPerAgent, setCostPerAgent] = useState<number>(5000);
+  const [overheadPercent, setOverheadPercent] = useState<number>(30);
+  const [patienceTime, setPatienceTime] = useState<number>(60);
+  const [showSensitivity, setShowSensitivity] = useState<boolean>(false);
 
   // Matrix View States
   const [matrixPeriod, setMatrixPeriod] = useState<string>('completo');
@@ -1226,6 +1232,39 @@ export default function Dashboard() {
 
     return allocateShifts612_812(required, labels, opCfg.start, opCfg.end);
   }, [erlangData, dimOpHours, dimSelectedDay, monthComparisons, monthForecastData]);
+
+  // WFM Cost Estimate
+  const wfmCostEstimate = useMemo(() => {
+    if (monthlyShiftSchedules.length === 0) return null;
+    const totalMonthlyHC = monthlyShiftSchedules[0]?.shiftRes?.totalMonthlyHC || 0;
+    const totalMonthVol = optimizedMonthErlang.reduce((sum, d) => sum + d.volume, 0);
+    const avgTmo = erlangData.length > 0 
+      ? Math.round(erlangData.reduce((sum, d) => sum + d.tmo, 0) / erlangData.length) 
+      : 240;
+    return calculateCostEstimate(totalMonthlyHC, totalMonthVol, avgTmo, costPerAgent, overheadPercent);
+  }, [monthlyShiftSchedules, optimizedMonthErlang, erlangData, costPerAgent, overheadPercent]);
+
+  // SLA Sensitivity Analysis
+  const slaSensitivityData = useMemo((): SensitivityResult[] => {
+    if (erlangData.length === 0) return [];
+    const totalVol = erlangData.reduce((sum, d) => sum + d.volume, 0);
+    const avgTmo = Math.round(erlangData.reduce((sum, d) => sum + d.tmo, 0) / erlangData.length);
+    return calculateSLASensitivity(
+      totalVol, avgTmo, 600,
+      dimTargetSlaPercent, dimTargetSlaTime, dimShrinkage
+    );
+  }, [erlangData, dimTargetSlaPercent, dimTargetSlaTime, dimShrinkage]);
+
+  // Shift Combination Comparison
+  const shiftComparisonData = useMemo((): ShiftCombinationCost[] => {
+    if (erlangData.length === 0) return [];
+    const required = erlangData.map(d => d.requiredAgents);
+    const labels = erlangData.map(d => d.intervalo);
+    return compareShiftCombinations(required, labels, costPerAgent, overheadPercent);
+  }, [erlangData, costPerAgent, overheadPercent]);
+
+  // WFM Metrics from backend stats
+  const wfmMetrics = stats?.wfm_metrics || null;
 
   const runOptimization = () => {
     if (erlangData.length === 0) return;
@@ -3064,6 +3103,16 @@ export default function Dashboard() {
                           dot={false}
                           activeDot={{ r: 5 }}
                         />
+                        {monthComparisons && (monthComparisons as any).confidence_intervals && (
+                          <Area 
+                            type="monotone" 
+                            dataKey="volume_upper" 
+                            stroke="none" 
+                            fill="#3b82f6" 
+                            fillOpacity={0.1}
+                            name="Limite Superior"
+                          />
+                        )}
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
@@ -3297,6 +3346,40 @@ export default function Dashboard() {
               </button>
             </div>
 
+            {/* WFM KPI Summary */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
+              {wfmMetrics && (
+                <>
+                  <div className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Vol. Médio/Dia</p>
+                    <p className="text-lg font-bold text-blue-400">{wfmMetrics.avg_daily_volume?.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">TMO Médio</p>
+                    <p className="text-lg font-bold text-purple-400">{wfmMetrics.avg_tmo?.toFixed(0)}s</p>
+                  </div>
+                  <div className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Hora Pico</p>
+                    <p className="text-lg font-bold text-orange-400">{wfmMetrics.peak_hour || '-'}</p>
+                  </div>
+                  <div className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Índice Volatilidade</p>
+                    <p className="text-lg font-bold text-yellow-400">{wfmMetrics.volatility_index?.toFixed(2) || '-'}</p>
+                  </div>
+                  <div className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Ratio Semana/FDS</p>
+                    <p className="text-lg font-bold text-emerald-400">{wfmMetrics.weekday_weekend_ratio?.toFixed(1) || '-'}</p>
+                  </div>
+                  <div className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Produtividade</p>
+                    <p className="text-lg font-bold text-cyan-400">
+                      {wfmCostEstimate ? wfmCostEstimate.productivity + ' cham/h' : '-'}
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+
             {dimSubTab === 'escala' && (<>
               <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-6 mb-6">
@@ -3414,6 +3497,144 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
+
+              {/* Cost Estimation Configuration */}
+              <div className="bg-slate-800 rounded-xl p-5 shadow-xl border border-slate-700/50 mb-4">
+                <h3 className="text-base font-semibold mb-4 text-emerald-400 flex items-center gap-2">
+                  <span>💰</span> Custo Operacional
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Custo/Agente/Mês (R$)</label>
+                    <input type="number" value={costPerAgent} onChange={e => setCostPerAgent(Number(e.target.value))}
+                      className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Overhead (%)</label>
+                    <input type="number" value={overheadPercent} onChange={e => setOverheadPercent(Number(e.target.value))}
+                      className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Tempo Paciência (s)</label>
+                    <input type="number" value={patienceTime} onChange={e => setPatienceTime(Number(e.target.value))}
+                      className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                  </div>
+                  <div className="flex items-end">
+                    <button onClick={() => setShowSensitivity(!showSensitivity)}
+                      className="w-full bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 font-medium py-2 px-4 rounded-lg text-sm transition-colors border border-amber-600/30">
+                      {showSensitivity ? 'Ocultar Sensibilidade' : 'Análise Sensibilidade'}
+                    </button>
+                  </div>
+                </div>
+                
+                {wfmCostEstimate && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+                    <div className="bg-slate-900/50 rounded-lg p-3">
+                      <p className="text-[10px] text-slate-500 uppercase">Custo Total Mensal</p>
+                      <p className="text-xl font-bold text-emerald-400">R$ {wfmCostEstimate.totalMonthlyCost.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-slate-900/50 rounded-lg p-3">
+                      <p className="text-[10px] text-slate-500 uppercase">Custo/Agente (c/ overhead)</p>
+                      <p className="text-xl font-bold text-blue-400">R$ {wfmCostEstimate.costPerAgentMonth.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-slate-900/50 rounded-lg p-3">
+                      <p className="text-[10px] text-slate-500 uppercase">Custo/Hora Trabalhada</p>
+                      <p className="text-xl font-bold text-purple-400">R$ {wfmCostEstimate.costPerAgentHour.toFixed(2)}</p>
+                    </div>
+                    <div className="bg-slate-900/50 rounded-lg p-3">
+                      <p className="text-[10px] text-slate-500 uppercase">Custo/Chamada</p>
+                      <p className="text-xl font-bold text-orange-400">R$ {wfmCostEstimate.costPerCall.toFixed(2)}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {showSensitivity && slaSensitivityData.length > 0 && (
+                <div className="bg-slate-800 rounded-xl p-5 shadow-xl border border-amber-700/50 mb-4">
+                  <h3 className="text-base font-semibold mb-4 text-amber-400 flex items-center gap-2">
+                    <span>📊</span> Análise de Sensibilidade SLA
+                  </h3>
+                  <p className="text-xs text-slate-400 mb-3">Impacto da variação de volume no dimensionamento e SLA</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-slate-400 text-xs border-b border-slate-700">
+                          <th className="py-2 px-2 text-left">Var. Volume</th>
+                          <th className="py-2 px-2 text-right">Volume</th>
+                          <th className="py-2 px-2 text-right">Erlangs</th>
+                          <th className="py-2 px-2 text-right">PAs Base</th>
+                          <th className="py-2 px-2 text-right">PAs c/ Shr.</th>
+                          <th className="py-2 px-2 text-right">SLA (%)</th>
+                          <th className="py-2 px-2 text-right">Ocupação (%)</th>
+                          <th className="py-2 px-2 text-right">Abandono (%)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {slaSensitivityData.map(row => (
+                          <tr key={row.volumeChangePct} className="border-b border-slate-800 hover:bg-slate-700/30">
+                            <td className={`py-2 px-2 font-medium ${row.volumeChangePct > 0 ? 'text-rose-400' : row.volumeChangePct < 0 ? 'text-emerald-400' : 'text-white'}`}>
+                              {row.volumeChangePct > 0 ? '+' : ''}{row.volumeChangePct}%
+                            </td>
+                            <td className="py-2 px-2 text-right">{row.volume.toLocaleString()}</td>
+                            <td className="py-2 px-2 text-right text-slate-300">{row.erlangs}</td>
+                            <td className="py-2 px-2 text-right">{row.baseAgents}</td>
+                            <td className="py-2 px-2 text-right font-bold text-blue-400">{row.requiredAgents}</td>
+                            <td className={`py-2 px-2 text-right font-bold ${row.sla >= dimTargetSlaPercent ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {row.sla}%
+                            </td>
+                            <td className="py-2 px-2 text-right text-yellow-400">{row.occupancy}%</td>
+                            <td className={`py-2 px-2 text-right ${row.abandonRate > 5 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                              {row.abandonRate}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {shiftComparisonData.length > 0 && (
+                <div className="bg-slate-800 rounded-xl p-5 shadow-xl border border-slate-700/50 mb-4">
+                  <h3 className="text-base font-semibold mb-4 text-cyan-400 flex items-center gap-2">
+                    <span>⚖️</span> Comparativo de Combinações de Turnos
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-slate-400 text-xs border-b border-slate-700">
+                          <th className="py-2 px-2 text-left">Turnos</th>
+                          <th className="py-2 px-2 text-right">HC Diário</th>
+                          <th className="py-2 px-2 text-right">HC Mensal</th>
+                          <th className="py-2 px-2 text-right">Custo Mensal</th>
+                          <th className="py-2 px-2 text-right">Custo/Agente</th>
+                          <th className="py-2 px-2 text-right">Eficiência</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {shiftComparisonData.map((row, idx) => {
+                          const isCurrent = JSON.stringify(row.shifts.sort()) === JSON.stringify(dimEnabledShifts.sort());
+                          return (
+                            <tr key={idx} className={`border-b border-slate-800 ${isCurrent ? 'bg-blue-900/20' : 'hover:bg-slate-700/30'}`}>
+                              <td className="py-2 px-2 font-medium">
+                                {row.shifts.map(s => AVAILABLE_SHIFTS.find(a => a.type === s)?.label?.split(' ')[0] || s).join(' + ')}
+                                {isCurrent && <span className="ml-2 text-xs text-blue-400">(Atual)</span>}
+                              </td>
+                              <td className="py-2 px-2 text-right">{row.totalDailyHC}</td>
+                              <td className="py-2 px-2 text-right font-bold text-blue-400">{row.totalMonthlyHC}</td>
+                              <td className="py-2 px-2 text-right text-emerald-400">R$ {row.estimatedCost.toLocaleString()}</td>
+                              <td className="py-2 px-2 text-right text-slate-300">R$ {row.costPerAgent.toLocaleString()}</td>
+                              <td className={`py-2 px-2 text-right font-bold ${(row.efficiency * 100) >= 95 ? 'text-emerald-400' : (row.efficiency * 100) >= 85 ? 'text-yellow-400' : 'text-rose-400'}`}>
+                                {(row.efficiency * 100).toFixed(1)}%
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
                 <h3 className="text-lg font-semibold mb-4 text-emerald-400">Configuração Avançada WFM (Escalas e Turnos)</h3>
@@ -3880,6 +4101,8 @@ export default function Dashboard() {
                             {AVAILABLE_SHIFTS.map(s => (
                               <th key={s.type} className="px-2 py-2 border-r border-blue-800 text-yellow-300">ENT {s.label.split(' ')[0]}</th>
                             ))}
+                            <th className="py-2 px-2 text-right text-xs border-r border-blue-800">Abandono (%)</th>
+                            <th className="py-2 px-2 text-right text-xs">Erlang B (%)</th>
                           </tr>
                         </thead>
                         <tbody className="text-center bg-white text-slate-800 text-[11px]">
@@ -3897,6 +4120,8 @@ export default function Dashboard() {
                               const avgOccupancy = chunk.reduce((sum: number, r: any) => sum + (r.occupancy || 0), 0) / chunk.length;
                               const avgSla = chunk.reduce((sum: number, r: any) => sum + (r.serviceLevel || 0), 0) / chunk.length;
                               const avgCoverage = Math.round(chunk.reduce((sum: number, _: any, idx: number) => sum + (shiftSchedule?.coverage[i + idx] || 0), 0) / chunk.length);
+                              const avgAbandonRate = chunk.reduce((sum: number, r: any) => sum + (r.abandonRate || 0), 0) / chunk.length;
+                              const avgErlangB = chunk.reduce((sum: number, r: any) => sum + (r.erlangB || 0), 0) / chunk.length;
 
                               const entradasSum: Record<string, number> = {};
                               AVAILABLE_SHIFTS.forEach(s => {
@@ -3915,6 +4140,8 @@ export default function Dashboard() {
                                 occupancy: avgOccupancy,
                                 serviceLevel: avgSla,
                                 coverage: avgCoverage,
+                                abandonRate: avgAbandonRate,
+                                erlangB: avgErlangB,
                                 entradasSum
                               });
                             }
@@ -3947,6 +4174,12 @@ export default function Dashboard() {
                                     </td>
                                   );
                                 })}
+                                <td className={`px-2 py-1 border-r border-slate-200 text-xs ${(row.abandonRate || 0) > 5 ? 'text-rose-400 font-bold' : 'text-emerald-400'}`}>
+                                  {(row.abandonRate || 0).toFixed(1)}%
+                                </td>
+                                <td className="px-2 py-1 text-xs text-slate-400">
+                                  {(row.erlangB || 0).toFixed(2)}%
+                                </td>
                               </tr>
                             ));
                           })}
