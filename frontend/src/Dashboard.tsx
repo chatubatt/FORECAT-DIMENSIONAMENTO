@@ -160,7 +160,7 @@ const getWorkdays = (year: number, month: number) => {
   return count;
 };
 
-export const defaultShrinkage = { abs: 8.2, nr17: 8.63, treinamento: 1.64, turnover: 0.0, outros: 0.0 };
+export const defaultShrinkage = { abs: 0, nr17: 8.63, treinamento: 0, turnover: 0, outros: 0 };
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
