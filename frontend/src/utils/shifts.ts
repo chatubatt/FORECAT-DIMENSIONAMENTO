@@ -72,55 +72,74 @@ export function calculateShifts(
   
   const scheduleMap = new Map<string, ScheduledShift>(); // key: "type-startIndex"
 
-  for (let i = 0; i < numIntervals; i++) {
-    while (required[i] > 0) {
-      let bestShift = enabledShifts[0];
-      let bestScore = -999999;
-      let bestStartIndex = i;
+  const maxIterations = numIntervals * 500;
+  for (let iter = 0; iter < maxIterations; iter++) {
+    const totalDeficit = required.reduce((s, v) => s + Math.max(0, v), 0);
+    if (totalDeficit === 0) break;
 
-      for (const shift of enabledShifts) {
-        let usefulCoverage = 0;
-        let wastedCoverage = 0;
+    let peakIdx = 0;
+    let peakVal = 0;
+    for (let i = 0; i < numIntervals; i++) {
+      if (required[i] > peakVal) { peakVal = required[i]; peakIdx = i; }
+    }
 
-        // Pull shift backwards if starting at `i` would overflow the operation end time
-        const actualStartIndex = Math.max(0, Math.min(i, numIntervals - shift.intervalsCovered));
-        
-        const limit = Math.min(actualStartIndex + shift.intervalsCovered, numIntervals);
-        for (let j = actualStartIndex; j < limit; j++) {
-          if (required[j] > 0) usefulCoverage++;
-          else wastedCoverage++;
+    let bestShift = enabledShifts[0];
+    let bestScore = -Infinity;
+    let bestStartIndex = 0;
+
+    for (const shift of enabledShifts) {
+      const minStart = Math.max(0, peakIdx - shift.intervalsCovered + 1);
+      const effectiveMaxStart = Math.min(peakIdx, Math.max(0, numIntervals - shift.intervalsCovered));
+      
+      const startIter = minStart <= effectiveMaxStart ? minStart : 0;
+      const endIter = minStart <= effectiveMaxStart ? effectiveMaxStart : Math.max(0, numIntervals - shift.intervalsCovered);
+      
+      for (let s = startIter; s <= endIter; s++) {
+        let reduction = 0;
+        let zeroDeficit = 0;
+        const limit = Math.min(s + shift.intervalsCovered, numIntervals);
+        for (let j = s; j < limit; j++) {
+          if (required[j] > 0) reduction += required[j];
+          else zeroDeficit++;
         }
-
-        const overflow = Math.max(0, (actualStartIndex + shift.intervalsCovered) - numIntervals);
-        wastedCoverage += overflow;
-
-        // Small penalty for pulling a shift too far backwards, to favor shifts that fit better naturally
-        const pushbackPenalty = (i - actualStartIndex) * 0.1;
-        const score = usefulCoverage - (wastedCoverage * 0.5) - pushbackPenalty;
+        
+        const validDuration = Math.max(1, limit - s);
+        let score = reduction / validDuration;
+        
+        const wasted = shift.intervalsCovered - validDuration;
+        score += (validDuration * 0.0001) - (wasted * 0.0001);
+        
+        score -= (zeroDeficit * 0.01);
+        
+        const shiftCenter = s + (validDuration / 2);
+        const distanceToPeak = Math.abs(shiftCenter - peakIdx);
+        score -= (distanceToPeak * 0.0001);
 
         if (score > bestScore) {
           bestScore = score;
           bestShift = shift;
-          bestStartIndex = actualStartIndex;
+          bestStartIndex = s;
         }
       }
+    }
 
-      const key = `${bestShift.type}-${bestStartIndex}`;
-      if (!scheduleMap.has(key)) {
-        scheduleMap.set(key, {
-          shift: bestShift,
-          startTime: intervalLabels[bestStartIndex],
-          startIndex: bestStartIndex,
-          count: 0
-        });
-      }
-      scheduleMap.get(key)!.count++;
+    if (bestScore === -Infinity) break;
 
-      const limit = Math.min(bestStartIndex + bestShift.intervalsCovered, numIntervals);
-      for (let j = bestStartIndex; j < limit; j++) {
-        required[j]--;
-        coverage[j]++;
-      }
+    const key = `${bestShift.type}-${bestStartIndex}`;
+    if (!scheduleMap.has(key)) {
+      scheduleMap.set(key, {
+        shift: bestShift,
+        startTime: intervalLabels[bestStartIndex],
+        startIndex: bestStartIndex,
+        count: 0
+      });
+    }
+    scheduleMap.get(key)!.count++;
+
+    const limit = Math.min(bestStartIndex + bestShift.intervalsCovered, numIntervals);
+    for (let j = bestStartIndex; j < limit; j++) {
+      required[j]--;
+      coverage[j]++;
     }
   }
 
