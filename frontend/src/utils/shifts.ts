@@ -95,23 +95,31 @@ export function calculateShifts(
       const endIter = minStart <= effectiveMaxStart ? effectiveMaxStart : Math.max(0, numIntervals - shift.intervalsCovered);
       
       for (let s = startIter; s <= endIter; s++) {
+        let useful = 0;
+        let wasted = 0;
         let reduction = 0;
-        let zeroDeficit = 0;
         const limit = Math.min(s + shift.intervalsCovered, numIntervals);
         for (let j = s; j < limit; j++) {
-          if (required[j] > 0) reduction += required[j];
-          else zeroDeficit++;
+          if (required[j] > 0) {
+            useful++;
+            reduction += required[j];
+          } else {
+            wasted++;
+          }
         }
         
-        const validDuration = Math.max(1, limit - s);
-        let score = reduction / validDuration;
+        // Penalize wasted coverage outside operating hours
+        const overflow = shift.intervalsCovered - (limit - s);
+        wasted += overflow;
         
-        const wasted = shift.intervalsCovered - validDuration;
-        score += (validDuration * 0.0001) - (wasted * 0.0001);
+        // Primary Score: useful coverage minus wasted coverage
+        let score = useful - (wasted * 1.5);
         
-        score -= (zeroDeficit * 0.01);
+        // Secondary Score (Tie-breaker 1): favor covering the highest deficits (centers shift around peak)
+        score += (reduction * 0.001);
         
-        const shiftCenter = s + (validDuration / 2);
+        // Tie-breaker 2: prefer shifts naturally centered on the peak to avoid breaking ties badly
+        const shiftCenter = s + (shift.intervalsCovered / 2);
         const distanceToPeak = Math.abs(shiftCenter - peakIdx);
         score -= (distanceToPeak * 0.0001);
 
@@ -283,24 +291,26 @@ export function allocateShifts612_812(
 
     for (const cand of candidates) {
       if (cand.start > peakIdx || cand.end <= peakIdx) continue;
+      let useful = 0;
+      let wasted = 0;
       let reduction = 0;
-      let zeroDeficit = 0;
       const limit = Math.min(cand.end, n);
       for (let j = cand.start; j < limit; j++) {
-        reduction += deficit[j];
-        if (deficit[j] === 0) zeroDeficit++;
+        if (deficit[j] > 0) {
+          useful++;
+          reduction += deficit[j];
+        } else {
+          wasted++;
+        }
       }
-      const validDuration = Math.max(1, limit - cand.start);
-      let score = reduction / validDuration;
       
-      // Tie breaker: reward longer useful work (reduces HC) but penalize wasted intervals outside operating window
-      const wasted = cand.duration - validDuration;
-      score += (validDuration * 0.0001) - (wasted * 0.0001);
+      const overflow = cand.duration - (limit - cand.start);
+      wasted += overflow;
       
-      // Penalize overstaffing (zero deficit intervals)
-      score -= (zeroDeficit * 0.01);
+      let score = useful - (wasted * 1.5);
       
-      // Center shift around peak to break ties and avoid pushing shifts too early
+      score += (reduction * 0.001);
+      
       const shiftCenter = (cand.start + limit) / 2;
       const distanceToPeak = Math.abs(shiftCenter - peakIdx);
       score -= (distanceToPeak * 0.0001);
