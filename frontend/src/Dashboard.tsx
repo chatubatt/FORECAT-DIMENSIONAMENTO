@@ -3885,8 +3885,8 @@ export default function Dashboard() {
                             const shiftSchedule = daySchedule.shiftRes;
                             const chunkedRows = [];
 
-                            for (let i = 0; i < daySchedule.intervals.length; i += 3) {
-                              const chunk = daySchedule.intervals.slice(i, i + 3);
+                            for (let i = 0; i < daySchedule.intervals.length; i += 1) {
+                              const chunk = daySchedule.intervals.slice(i, i + 1);
                               if (chunk.length === 0) continue;
 
                               const sumVol = chunk.reduce((sum: number, r: any) => sum + r.volume, 0);
