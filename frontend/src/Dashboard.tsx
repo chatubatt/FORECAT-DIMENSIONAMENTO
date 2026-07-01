@@ -1,8 +1,8 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, BarChart, Bar, ComposedChart, Area } from 'recharts';
 import { UploadCloud, Activity, Clock, CalendarDays, TrendingUp, Users } from 'lucide-react';
-import { evaluateErlangConfig, type SlaStrategy, type OperatingHoursConfig, type ErlangResult, calculateCostEstimate, calculateSLASensitivity, type SensitivityResult, estimateAbandonRate, calcErlangB, calculateShrinkageBreakdown, type ShrinkageResult, calculateScenarioImpact, type ScenarioResult, generateOccupancyAnalysis, type OccupancyAnalysis, calculateErlangA, type ErlangAResult, exportToCSV, exportToJSON } from './utils/erlang';
-import { calculateShifts, type ShiftType, AVAILABLE_SHIFTS, allocateShifts612_812, type ShiftAllocationResult, compareShiftCombinations, type ShiftCombinationCost, generateRotationCalendar, type RotationCalendar, calculateShiftEfficiency, type ShiftEfficiencyMetric, optimizeShiftMix, type OptimizationResult, isBrazilianHoliday } from './utils/shifts';
+import { evaluateErlangConfig, type SlaStrategy, type OperatingHoursConfig, type ErlangResult, calculateCostEstimate, calculateSLASensitivity, type SensitivityResult, calculateShrinkageBreakdown, calculateScenarioImpact, type ScenarioResult, exportToCSV } from './utils/erlang';
+import { calculateShifts, type ShiftType, AVAILABLE_SHIFTS, allocateShifts612_812, type ShiftAllocationResult, compareShiftCombinations, type ShiftCombinationCost, generateRotationCalendar, type RotationCalendar } from './utils/shifts';
 
 interface IntervalForecast {
   intervalo: string;
@@ -177,11 +177,18 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-export default function Dashboard() {
+interface DashboardProps {
+  activeTab?: string;
+  onTabChange?: (tab: any) => void;
+}
+
+export default function Dashboard({ activeTab: propActiveTab, onTabChange }: DashboardProps = {}) {
   const [forecastData, setForecastData] = useState<DailyForecast[]>([]);
   const [stats, setStats] = useState<HistoryStats | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'forecast' | 'calendario' | 'historico' | 'baseline' | 'previsao_mensal' | 'dimensionamento' | 'metodologia' | 'cenarios' | 'shrinkage' | 'whatif' | 'rotacao'>('forecast');
+  const [internalActiveTab, setInternalActiveTab] = useState<'forecast' | 'calendario' | 'historico' | 'baseline' | 'previsao_mensal' | 'dimensionamento' | 'metodologia' | 'cenarios' | 'shrinkage' | 'whatif' | 'rotacao'>('forecast');
+  const activeTab = (propActiveTab as any) || internalActiveTab;
+  const setActiveTab = (tab: any) => { setInternalActiveTab(tab); onTabChange?.(tab); };
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
   const [flutuacao, setFlutuacao] = useState<number>(0);
   const [incremento, setIncremento] = useState<number>(0);
@@ -1497,9 +1504,9 @@ export default function Dashboard() {
   // --- Fim Dimensionamento ---
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Upload Area */}
-      <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+      <div className="glass p-6">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold mb-1">Atualizar Histórico</h2>
@@ -1518,7 +1525,7 @@ export default function Dashboard() {
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={loading}
-              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-6 py-2.5 rounded-lg font-medium transition-all disabled:opacity-50"
+              className="flex items-center gap-2 btn-ghost px-6 py-2.5 disabled:opacity-50"
             >
               <UploadCloud size={20} />
               {stagedFile ? "Trocar CSV" : "Selecionar CSV"}
@@ -1528,7 +1535,7 @@ export default function Dashboard() {
               <button
                 onClick={confirmUpload}
                 disabled={loading}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-lg shadow-lg hover:shadow-blue-500/20 transition-all flex items-center gap-2"
+                className="btn-primary py-2.5 px-6 flex items-center gap-2"
               >
                 {loading ? "Processando..." : "🚀 Processar e Treinar IA"}
               </button>
@@ -1546,13 +1553,13 @@ export default function Dashboard() {
         </div>
 
         {availableCelulas.length > 1 && (
-          <div className="mt-4 pt-4 border-t border-slate-700/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="mt-4 pt-4 border-t border-[rgba(99,102,241,0.08)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-blue-400 mb-1">Filtrar por Célula:</p>
               <select
                 value={selectedCelula}
                 onChange={(e) => setSelectedCelula(e.target.value)}
-                className="bg-slate-900 border border-slate-600 text-slate-200 rounded px-3 py-2 outline-none focus:border-blue-500 w-full md:w-64"
+                className="bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] text-slate-200 rounded px-3 py-2 outline-none focus:border-blue-500 w-full md:w-64"
               >
                 {availableCelulas.map(cel => (
                   <option key={cel} value={cel}>{cel}</option>
@@ -1564,14 +1571,14 @@ export default function Dashboard() {
             
         {/* Nova Seção: Matriz de Volume Intradiário */}
         {stats?.matrizes_intervalo && stats.matrizes_intervalo[matrixPeriod] && (
-          <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 mt-6">
+          <div className="glass p-6 mt-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
               <h3 className="text-lg font-semibold text-pink-400 flex items-center gap-2">
                 <span>📊</span> Matriz de Distribuição Intradiária
               </h3>
               
               <div className="flex items-center gap-3">
-                <div className="bg-slate-900 rounded-lg p-1 flex">
+                <div className="bg-[var(--color-bg-surface)] rounded-lg p-1 flex">
                   <button
                     onClick={() => setMatrixViewType('volume')}
                     className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${matrixViewType === 'volume' ? 'bg-pink-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
@@ -1595,7 +1602,7 @@ export default function Dashboard() {
                 <select
                   value={matrixPeriod}
                   onChange={(e) => setMatrixPeriod(e.target.value)}
-                  className="bg-slate-900 border border-slate-600 text-slate-200 rounded px-3 py-2 outline-none focus:border-pink-500 text-sm"
+                  className="bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] text-slate-200 rounded px-3 py-2 outline-none focus:border-pink-500 text-sm"
                 >
                   <option value="completo">Histórico Completo</option>
                   {Object.keys(stats.matrizes_intervalo).filter(k => k !== 'completo').sort((a,b) => b.localeCompare(a)).map(mes => {
@@ -1615,8 +1622,8 @@ export default function Dashboard() {
                   : "Tempo Médio de Atendimento (em segundos) por intervalo."}
             </p>
             
-            <div className="overflow-x-auto max-h-[500px] custom-scrollbar">
-              <table className="w-full text-sm text-center text-slate-300">
+            <div className="overflow-x-auto max-h-[500px] ">
+              <table className="data-table text-center">
                 <thead className="text-xs text-slate-400 bg-slate-700/50 sticky top-0 z-10">
                   <tr>
                     <th className="px-3 py-2 text-left bg-slate-800">Intervalo</th>
@@ -1648,7 +1655,7 @@ export default function Dashboard() {
                       // Se for Peso, vamos calcular com base na soma da coluna para aquele dia.
                       
                       return (
-                        <tr key={intervalo} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                        <tr key={intervalo} className="border-b border-[rgba(99,102,241,0.08)] hover:bg-[var(--color-glass-hover)]">
                           <td className="px-3 py-1 text-left font-bold">{intervalo}</td>
                           {vals.map((val, idx) => {
                             const originalDayIdx = [6, 0, 1, 2, 3, 4, 5][idx];
@@ -1708,7 +1715,7 @@ export default function Dashboard() {
 
         {/* Gráfico Comparativo de Curvas Intradiárias */}
         {stats?.matrizes_intervalo && (
-          <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 mt-6">
+          <div className="glass p-6 mt-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
               <h3 className="text-lg font-semibold text-blue-400 flex items-center gap-2">
                 <span>📈</span> Comparativo de Curvas Intradiárias
@@ -1717,7 +1724,7 @@ export default function Dashboard() {
               <div className="flex flex-col md:flex-row items-center gap-4">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-slate-400 font-semibold">Métrica:</span>
-                  <div className="bg-slate-900 rounded-lg p-1 flex">
+                  <div className="bg-[var(--color-bg-surface)] rounded-lg p-1 flex">
                     <button
                       onClick={() => setChartMetric('volume')}
                       className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${chartMetric === 'volume' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
@@ -1744,7 +1751,7 @@ export default function Dashboard() {
                   <select
                     value={chartDayView}
                     onChange={(e) => setChartDayView(e.target.value)}
-                    className="bg-slate-900 border border-slate-600 text-slate-200 rounded px-3 py-1.5 outline-none focus:border-blue-500 text-sm"
+                    className="bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] text-slate-200 rounded px-3 py-1.5 outline-none focus:border-blue-500 text-sm"
                   >
                     <option value="consolidado">Consolidado (Geral)</option>
                     <option value="0">Segunda-feira</option>
@@ -1759,7 +1766,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="mb-6 bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
+            <div className="mb-6 glass-subtle p-4/50">
               <p className="text-sm text-slate-400 font-semibold mb-3">Selecione os períodos para comparar:</p>
               <div className="flex flex-wrap gap-4">
                 <label className="flex items-center gap-2 text-sm cursor-pointer hover:text-blue-300 transition-colors">
@@ -1770,7 +1777,7 @@ export default function Dashboard() {
                       if (e.target.checked) setChartPeriods([...chartPeriods, 'completo']);
                       else setChartPeriods(chartPeriods.filter(p => p !== 'completo'));
                     }}
-                    className="rounded border-slate-600 text-blue-500 focus:ring-blue-500 bg-slate-800"
+                    className="rounded border-[rgba(99,102,241,0.12)] text-blue-500 focus:ring-blue-500 bg-slate-800"
                   />
                   <span>Histórico Completo</span>
                 </label>
@@ -1787,7 +1794,7 @@ export default function Dashboard() {
                           if (e.target.checked) setChartPeriods([...chartPeriods, mes]);
                           else setChartPeriods(chartPeriods.filter(p => p !== mes));
                         }}
-                        className="rounded border-slate-600 text-blue-500 focus:ring-blue-500 bg-slate-800"
+                        className="rounded border-[rgba(99,102,241,0.12)] text-blue-500 focus:ring-blue-500 bg-slate-800"
                       />
                       <span>{label}</span>
                     </label>
@@ -1908,7 +1915,7 @@ export default function Dashboard() {
         )}
 
 
-      <div className="mt-4 pt-4 border-t border-slate-700/50">
+      <div className="mt-4 pt-4 border-t border-[rgba(99,102,241,0.08)]">
         <p className="text-sm text-slate-400 mb-2">Considerar no histórico os seguintes dias da semana:</p>
         <div className="flex flex-wrap gap-3">
           {[
@@ -1923,7 +1930,7 @@ export default function Dashboard() {
             <label key={day.id} className="flex items-center gap-2 cursor-pointer bg-slate-700/30 px-3 py-1.5 rounded-md hover:bg-slate-700/50 transition-colors">
               <input
                 type="checkbox"
-                className="rounded bg-slate-900 border-slate-600 text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-800"
+                className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-800"
                 checked={selectedTrainDays.includes(day.id)}
                 onChange={(e) => {
                   if (e.target.checked) {
@@ -1947,7 +1954,7 @@ export default function Dashboard() {
               <label key={year} className="flex items-center gap-2 cursor-pointer bg-slate-700/30 px-3 py-1.5 rounded-md hover:bg-slate-700/50 transition-colors">
                 <input
                   type="checkbox"
-                  className="rounded bg-slate-900 border-slate-600 text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-800"
+                  className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-800"
                   checked={selectedTrainYears.includes(year)}
                   onChange={(e) => {
                     if (e.target.checked) {
@@ -1970,7 +1977,7 @@ export default function Dashboard() {
 
 
       {uploadStatus && (
-        <div className="mt-4 text-sm text-blue-400 bg-blue-900/20 p-3 rounded-lg border border-blue-800/50">
+        <div className="mt-4 text-sm text-blue-400 bg-blue-900/20 p-3 rounded-lg border border-[rgba(99,102,241,0.15)]/50">
           {uploadStatus}
         </div>
       )}
@@ -1980,7 +1987,7 @@ export default function Dashboard() {
     forecastData.length > 0 && (
       <>
         {/* TABS NAVIGATION */}
-        <div className="flex space-x-2 border-b border-slate-700 mb-6">
+        <div className="flex space-x-2 border-b border-[rgba(99,102,241,0.12)] mb-6">
           <button
             onClick={() => setActiveTab('forecast')}
             className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'forecast' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
@@ -2051,8 +2058,8 @@ export default function Dashboard() {
 
         {activeTab === 'cenarios' && (
           <>
-            <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
-              <div className="flex justify-between items-center mb-6 border-b border-slate-700/50 pb-4">
+            <div className="glass p-6">
+              <div className="flex justify-between items-center mb-6 border-b border-[rgba(99,102,241,0.08)] pb-4">
                 <h2 className="text-xl font-bold text-emerald-400 flex items-center gap-2">
                   <span>💾</span> Meus Cenários Salvos
                 </h2>
@@ -2069,7 +2076,7 @@ export default function Dashboard() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-700 text-slate-400 text-sm">
+                      <tr className="border-b border-[rgba(99,102,241,0.12)] text-slate-400 text-sm">
                         <th className="py-3 px-4">Nome do Cenário</th>
                         <th className="py-3 px-4">Salvo em</th>
                         <th className="py-3 px-4">Mês Projetado</th>
@@ -2080,7 +2087,7 @@ export default function Dashboard() {
                     </thead>
                     <tbody>
                       {scenarios.map(s => (
-                        <tr key={s.id} className="border-b border-slate-700/50 hover:bg-slate-700/20 transition-colors">
+                        <tr key={s.id} className="border-b border-[rgba(99,102,241,0.08)] hover:bg-slate-700/20 transition-colors">
                           <td className="py-4 px-4 font-medium text-slate-200">{s.name}</td>
                           <td className="py-4 px-4 text-sm text-slate-400">{s.date}</td>
                           <td className="py-4 px-4 text-sm text-blue-300">{s.month}/{s.year}</td>
@@ -2106,8 +2113,8 @@ export default function Dashboard() {
               )}
             </div>
 
-            <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 mt-6">
-              <div className="flex justify-between items-center mb-6 border-b border-slate-700/50 pb-4">
+            <div className="glass p-6 mt-6">
+              <div className="flex justify-between items-center mb-6 border-b border-[rgba(99,102,241,0.08)] pb-4">
                 <h2 className="text-xl font-bold text-orange-400 flex items-center gap-2">
                   <span>👥</span> Cenários de Dimensionamento (Erlang)
                 </h2>
@@ -2118,7 +2125,7 @@ export default function Dashboard() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-700 text-slate-400 text-sm">
+                      <tr className="border-b border-[rgba(99,102,241,0.12)] text-slate-400 text-sm">
                         <th className="py-3 px-4">Nome do Cenário</th>
                         <th className="py-3 px-4">Data Alvo</th>
                         <th className="py-3 px-4">Estratégia SLA</th>
@@ -2129,7 +2136,7 @@ export default function Dashboard() {
                     </thead>
                     <tbody>
                       {staffingScenarios.map(s => (
-                        <tr key={s.id} className="border-b border-slate-700/50 hover:bg-slate-700/20 transition-colors">
+                        <tr key={s.id} className="border-b border-[rgba(99,102,241,0.08)] hover:bg-slate-700/20 transition-colors">
                           <td className="py-4 px-4 font-medium text-slate-200">{s.name}</td>
                           <td className="py-4 px-4 text-sm text-blue-300">{new Date(s.targetDate + "T00:00:00").toLocaleDateString('pt-BR')}</td>
                           <td className="py-4 px-4 text-sm text-emerald-400 font-semibold">{s.strategy}</td>
@@ -2159,7 +2166,7 @@ export default function Dashboard() {
           <>
             {/* KPIs */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+              <div className="glass p-6">
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-blue-500/10 rounded-lg text-blue-500">
                     <CalendarDays size={24} />
@@ -2171,7 +2178,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+              <div className="glass p-6">
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-purple-500/10 rounded-lg text-purple-500">
                     <Activity size={24} />
@@ -2183,7 +2190,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+              <div className="glass p-6">
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-emerald-500/10 rounded-lg text-emerald-500">
                     <Clock size={24} />
@@ -2196,7 +2203,7 @@ export default function Dashboard() {
               </div>
 
               {stats && (
-                <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+                <div className="glass p-6">
                   <div className="flex items-center gap-4">
                     <div className="p-3 bg-amber-500/10 rounded-lg text-amber-500">
                       <TrendingUp size={24} />
@@ -2213,7 +2220,7 @@ export default function Dashboard() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Curva Intra-diária */}
-              <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+              <div className="glass p-6">
                 <h3 className="text-lg font-semibold mb-6">Curva Diária (Intervalos)</h3>
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
@@ -2249,7 +2256,7 @@ export default function Dashboard() {
               </div>
 
               {/* Previsão dos Próximos 7 Dias */}
-              <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+              <div className="glass p-6">
                 <h3 className="text-lg font-semibold mb-6">Volume Previsto (Próximos Dias)</h3>
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
@@ -2287,16 +2294,16 @@ export default function Dashboard() {
             {/* Análises Históricas Detalhadas (Planilha) */}
             {stats && (
               <div className="space-y-6 mt-8">
-                <h2 className="text-2xl font-bold border-b border-slate-700 pb-2">Análises Históricas da Planilha</h2>
+                <h2 className="text-2xl font-bold border-b border-[rgba(99,102,241,0.12)] pb-2">Análises Históricas da Planilha</h2>
 
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
                   {/* Tabela: Visão por Semana */}
-                  <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 overflow-x-auto">
+                  <div className="glass p-6 overflow-x-auto">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="text-lg font-semibold text-slate-200">Visão por Semana</h3>
                       <select
-                        className="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        className="bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] text-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500 outline-none"
                         value={selectedVisaoSemanaMonth}
                         onChange={(e) => setSelectedVisaoSemanaMonth(e.target.value)}
                       >
@@ -2306,8 +2313,8 @@ export default function Dashboard() {
                         ))}
                       </select>
                     </div>
-                    <table className="w-full text-sm text-left text-slate-300">
-                      <thead className="text-xs text-slate-400 bg-slate-700/50">
+                    <table className="data-table">
+                      <thead className="">
                         <tr>
                           <th className="px-4 py-2">Ano</th>
                           <th className="px-4 py-2">Mês</th>
@@ -2326,7 +2333,7 @@ export default function Dashboard() {
                         {stats.visao_semana
                           .filter((row: any) => selectedVisaoSemanaMonth === 'all' || `${row.ano} - ${row.mes}` === selectedVisaoSemanaMonth)
                           .map((row: any, i: number) => (
-                            <tr key={i} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                            <tr key={i} className="border-b border-[rgba(99,102,241,0.08)] hover:bg-[var(--color-glass-hover)]">
                               <td className="px-4 py-2 font-bold">{row.ano}</td>
                               <td className="px-4 py-2 font-medium">{row.mes}</td>
                               <td className="px-4 py-2 font-medium text-center">{row.semana}</td>
@@ -2346,10 +2353,10 @@ export default function Dashboard() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Tabela: Ranking Dias */}
-                    <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 overflow-x-auto">
+                    <div className="glass p-6 overflow-x-auto">
                       <h3 className="text-lg font-semibold mb-4 text-slate-200">Visão por Semana (Ranking)</h3>
-                      <table className="w-full text-sm text-left text-slate-300">
-                        <thead className="text-xs text-slate-400 bg-slate-700/50">
+                      <table className="data-table">
+                        <thead className="">
                           <tr>
                             <th className="px-3 py-2">#</th>
                             <th className="px-3 py-2">Data</th>
@@ -2360,7 +2367,7 @@ export default function Dashboard() {
                         </thead>
                         <tbody>
                           {stats.ranking_dias.map((row, i) => (
-                            <tr key={i} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                            <tr key={i} className="border-b border-[rgba(99,102,241,0.08)] hover:bg-[var(--color-glass-hover)]">
                               <td className="px-3 py-2">{i + 1}</td>
                               <td className="px-3 py-2">{row.data_str}</td>
                               <td className="px-3 py-2 capitalize">{row.dia_semana_str.slice(0, 3)}</td>
@@ -2373,10 +2380,10 @@ export default function Dashboard() {
                     </div>
 
                     {/* Tabela: Visão por Quinzena */}
-                    <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 overflow-x-auto">
+                    <div className="glass p-6 overflow-x-auto">
                       <h3 className="text-lg font-semibold mb-4 text-slate-200">Visão por Quinzena</h3>
-                      <table className="w-full text-sm text-left text-slate-300">
-                        <thead className="text-xs text-slate-400 bg-slate-700/50">
+                      <table className="data-table">
+                        <thead className="">
                           <tr>
                             <th className="px-4 py-2">Quinzena</th>
                             <th className="px-4 py-2">Volume</th>
@@ -2385,7 +2392,7 @@ export default function Dashboard() {
                         </thead>
                         <tbody>
                           {stats.visao_quinzena.map((row, i) => (
-                            <tr key={i} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                            <tr key={i} className="border-b border-[rgba(99,102,241,0.08)] hover:bg-[var(--color-glass-hover)]">
                               <td className="px-4 py-2">{row.quinzena}</td>
                               <td className="px-4 py-2 font-medium">{row.volume.toLocaleString()}</td>
                               <td className="px-4 py-2 text-slate-400">{row.percentual}%</td>
@@ -2399,7 +2406,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Gráfico Comparativo Curvas */}
-                <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 mt-6">
+                <div className="glass p-6 mt-6">
                   <h3 className="text-lg font-semibold mb-6">Comparativo de Curvas</h3>
                   <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
@@ -2423,10 +2430,10 @@ export default function Dashboard() {
 
         {activeTab === 'calendario' && stats && (
           <div className="space-y-6 mt-8">
-            <h2 className="text-2xl font-bold border-b border-slate-700 pb-2">Motor de Calendário e Dias Úteis</h2>
-            <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 overflow-x-auto">
-              <table className="w-full text-sm text-left text-slate-300">
-                <thead className="text-xs text-slate-400 bg-slate-700/50">
+            <h2 className="text-2xl font-bold border-b border-[rgba(99,102,241,0.12)] pb-2">Motor de Calendário e Dias Úteis</h2>
+            <div className="glass p-6 overflow-x-auto">
+              <table className="data-table">
+                <thead className="">
                   <tr>
                     <th className="px-4 py-2">Ano</th>
                     <th className="px-4 py-2">Mês</th>
@@ -2444,7 +2451,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {stats.calendario.map((row, i) => (
-                    <tr key={i} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                    <tr key={i} className="border-b border-[rgba(99,102,241,0.08)] hover:bg-[var(--color-glass-hover)]">
                       <td className="px-4 py-2 font-medium">{row.ano}</td>
                       <td className="px-4 py-2">{row.mes}</td>
                       <td className="px-3 py-2 text-center font-bold text-slate-200">{row.dias}</td>
@@ -2467,10 +2474,10 @@ export default function Dashboard() {
 
         {activeTab === 'historico' && stats && (
           <div className="space-y-6 mt-8">
-            <h2 className="text-2xl font-bold border-b border-slate-700 pb-2">Histórico Anual (Volume Total)</h2>
-            <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 overflow-x-auto">
-              <table className="w-full text-sm text-center text-slate-300">
-                <thead className="text-xs text-slate-400 bg-slate-700/50">
+            <h2 className="text-2xl font-bold border-b border-[rgba(99,102,241,0.12)] pb-2">Histórico Anual (Volume Total)</h2>
+            <div className="glass p-6 overflow-x-auto">
+              <table className="data-table text-center">
+                <thead className="">
                   <tr>
                     <th className="px-3 py-2 text-left">Ano</th>
                     <th className="px-2 py-2">Jan</th><th className="px-2 py-2">Fev</th><th className="px-2 py-2">Mar</th>
@@ -2482,7 +2489,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {stats.historico_anual.map((row, i) => (
-                    <tr key={i} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                    <tr key={i} className="border-b border-[rgba(99,102,241,0.08)] hover:bg-[var(--color-glass-hover)]">
                       <td className="px-3 py-2 text-left font-bold">{row.ano}</td>
                       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => {
                         const val = row[`mes_${m}` as keyof typeof row] as number;
@@ -2505,10 +2512,10 @@ export default function Dashboard() {
               </table>
             </div>
 
-            <h2 className="text-2xl font-bold border-b border-slate-700 pb-2 mt-8">Variação Mês a Mês (% Desv.)</h2>
-            <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 overflow-x-auto mt-4">
-              <table className="w-full text-sm text-center text-slate-300">
-                <thead className="text-xs text-slate-400 bg-slate-700/50">
+            <h2 className="text-xl font-bold mt-8 mb-4 text-[var(--color-text-primary)]">Variação Mês a Mês (% Desv.)</h2>
+            <div className="glass p-6 overflow-x-auto mt-4">
+              <table className="data-table text-center">
+                <thead className="">
                   <tr>
                     <th className="px-3 py-2 text-left">Ano</th>
                     <th className="px-2 py-2">Jan</th><th className="px-2 py-2">Fev</th><th className="px-2 py-2">Mar</th>
@@ -2519,7 +2526,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {stats.variacao_anual.map((row, i) => (
-                    <tr key={i} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                    <tr key={i} className="border-b border-[rgba(99,102,241,0.08)] hover:bg-[var(--color-glass-hover)]">
                       <td className="px-3 py-2 text-left font-bold">{row.ano}</td>
                       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => {
                         const val = row[`mes_${m}` as keyof typeof row] as number;
@@ -2540,11 +2547,11 @@ export default function Dashboard() {
 
         {activeTab === 'baseline' && stats && (
           <div className="space-y-6 mt-8">
-            <h2 className="text-2xl font-bold border-b border-slate-700 pb-2">Histórico Semanal - Absoluto & Fatores</h2>
-            <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 overflow-x-auto">
+            <h2 className="text-2xl font-bold border-b border-[rgba(99,102,241,0.12)] pb-2">Histórico Semanal - Absoluto & Fatores</h2>
+            <div className="glass p-6 overflow-x-auto">
               <p className="text-red-400 font-bold mb-4">Escolha os meses para calcular o Baseline de Forecast.</p>
-              <table className="w-full text-sm text-center text-slate-300">
-                <thead className="text-xs text-slate-400 bg-slate-700/50">
+              <table className="data-table text-center">
+                <thead className="">
                   <tr>
                     <th className="px-3 py-2 text-left">Dia</th>
                     {stats.baseline_meses.map(b => (
@@ -2563,11 +2570,11 @@ export default function Dashboard() {
                         </label>
                       </th>
                     ))}
-                    <th className="px-3 py-2 border-l border-slate-600">M. Geo</th>
+                    <th className="px-3 py-2 border-l border-[rgba(99,102,241,0.12)]">M. Geo</th>
                     <th className="px-3 py-2">Pond.</th>
                     <th className="px-3 py-2">M. DU</th>
                     <th className="px-3 py-2">E. Calend.</th>
-                    <th className="px-3 py-2 border-l border-slate-600">M. Geo %</th>
+                    <th className="px-3 py-2 border-l border-[rgba(99,102,241,0.12)]">M. Geo %</th>
                     <th className="px-3 py-2">Pond. %</th>
                     <th className="px-3 py-2">M. DU %</th>
                     <th className="px-3 py-2">E. Calend. %</th>
@@ -2577,33 +2584,33 @@ export default function Dashboard() {
                   {['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'].map((dayKey) => {
                     const dayLabel = dayKey === 'seg' ? 'Seg' : dayKey === 'ter' ? 'Ter' : dayKey === 'qua' ? 'Qua' : dayKey === 'qui' ? 'Qui' : dayKey === 'sex' ? 'Sex' : dayKey === 'sab' ? 'Sáb' : 'Dom';
                     return (
-                      <tr key={dayKey} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                      <tr key={dayKey} className="border-b border-[rgba(99,102,241,0.08)] hover:bg-[var(--color-glass-hover)]">
                         <td className="px-3 py-2 text-left font-bold">{dayLabel}</td>
                         {stats.baseline_meses.map(b => (
                           <td key={b.ano_mes} className="px-3 py-2">{(b as any)[dayKey].toLocaleString()}</td>
                         ))}
-                        <td className="px-3 py-2 font-medium border-l border-slate-600">{(mGeoBase as any)[dayKey].toLocaleString()}</td>
+                        <td className="px-3 py-2 font-medium border-l border-[rgba(99,102,241,0.12)]">{(mGeoBase as any)[dayKey].toLocaleString()}</td>
                         <td className="px-3 py-2 font-medium">{(pondBase as any)[dayKey].toLocaleString()}</td>
                         <td className="px-3 py-2 font-medium">{(mDuBase as any)[dayKey].toLocaleString()}</td>
                         <td className="px-3 py-2 font-medium">{(eCalendBase as any)[dayKey].toLocaleString()}</td>
-                        <td className="px-3 py-2 text-blue-300 border-l border-slate-600">{getPercent((mGeoBase as any)[dayKey], mGeoBase.total)}</td>
+                        <td className="px-3 py-2 text-blue-300 border-l border-[rgba(99,102,241,0.12)]">{getPercent((mGeoBase as any)[dayKey], mGeoBase.total)}</td>
                         <td className="px-3 py-2 text-blue-300">{getPercent((pondBase as any)[dayKey], pondBase.total)}</td>
                         <td className="px-3 py-2 text-blue-300">{getPercent((mDuBase as any)[dayKey], mDuBase.total)}</td>
                         <td className="px-3 py-2 text-blue-300">{getPercent((eCalendBase as any)[dayKey], eCalendBase.total)}</td>
                       </tr>
                     );
                   })}
-                  <tr className="border-b border-slate-700/50 bg-slate-700/20 font-bold text-white">
+                  <tr className="border-b border-[rgba(99,102,241,0.08)] bg-slate-700/20 font-bold text-white">
                     <td className="px-3 py-2 text-left">Total</td>
                     {stats.baseline_meses.map(b => {
                       const sumDays = b.seg + b.ter + b.qua + b.qui + b.sex + b.sab + b.dom;
                       return <td key={b.ano_mes} className="px-3 py-2">{sumDays.toLocaleString()}</td>;
                     })}
-                    <td className="px-3 py-2 border-l border-slate-600">{mGeoBase.total.toLocaleString()}</td>
+                    <td className="px-3 py-2 border-l border-[rgba(99,102,241,0.12)]">{mGeoBase.total.toLocaleString()}</td>
                     <td className="px-3 py-2">{pondBase.total.toLocaleString()}</td>
                     <td className="px-3 py-2">{mDuBase.total.toLocaleString()}</td>
                     <td className="px-3 py-2">{eCalendBase.total.toLocaleString()}</td>
-                    <td className="px-3 py-2 border-l border-slate-600">100%</td>
+                    <td className="px-3 py-2 border-l border-[rgba(99,102,241,0.12)]">100%</td>
                     <td className="px-3 py-2">100%</td>
                     <td className="px-3 py-2">100%</td>
                     <td className="px-3 py-2">100%</td>
@@ -2619,7 +2626,7 @@ export default function Dashboard() {
                       type="number"
                       value={flutuacao}
                       onChange={(e) => setFlutuacao(Number(e.target.value))}
-                      className="bg-slate-700 border border-slate-600 rounded px-3 py-1 w-24 text-right"
+                      className="bg-slate-700 border border-[rgba(99,102,241,0.12)] rounded px-3 py-1 w-24 text-right"
                     />
                   </div>
                   <div className="flex items-center gap-4">
@@ -2628,48 +2635,48 @@ export default function Dashboard() {
                       type="number"
                       value={incremento}
                       onChange={(e) => setIncremento(Number(e.target.value))}
-                      className="bg-slate-700 border border-slate-600 rounded px-3 py-1 w-24 text-right text-red-400"
+                      className="bg-slate-700 border border-[rgba(99,102,241,0.12)] rounded px-3 py-1 w-24 text-right text-red-400"
                     />
                   </div>
                 </div>
 
                 <div>
                   <h4 className="text-sm font-bold text-center mb-2">Absoluto + % Var. (Resultado Forecast Mês Alvo)</h4>
-                  <table className="text-sm text-center bg-slate-900 border border-slate-600 w-full">
+                  <table className="text-sm text-center bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] w-full">
                     <thead>
                       <tr>
-                        <th className="px-4 py-2 border border-slate-600 text-left">Dia</th>
-                        <th className="px-4 py-2 border border-slate-600">M. Geo</th>
-                        <th className="px-4 py-2 border border-slate-600">Pond.</th>
-                        <th className="px-4 py-2 border border-slate-600">M. DU</th>
-                        <th className="px-4 py-2 border border-slate-600">E. Calend.</th>
+                        <th className="px-4 py-2 border border-[rgba(99,102,241,0.12)] text-left">Dia</th>
+                        <th className="px-4 py-2 border border-[rgba(99,102,241,0.12)]">M. Geo</th>
+                        <th className="px-4 py-2 border border-[rgba(99,102,241,0.12)]">Pond.</th>
+                        <th className="px-4 py-2 border border-[rgba(99,102,241,0.12)]">M. DU</th>
+                        <th className="px-4 py-2 border border-[rgba(99,102,241,0.12)]">E. Calend.</th>
                       </tr>
                     </thead>
                     <tbody>
                       {['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'].map((dayKey) => {
                         const dayLabel = dayKey === 'seg' ? 'Seg' : dayKey === 'ter' ? 'Ter' : dayKey === 'qua' ? 'Qua' : dayKey === 'qui' ? 'Qui' : dayKey === 'sex' ? 'Sex' : dayKey === 'sab' ? 'Sáb' : 'Dom';
                         return (
-                          <tr key={dayKey} className="border-b border-slate-700/50 hover:bg-slate-700/30">
-                            <td className="px-4 py-2 border border-slate-600 text-left font-bold">{dayLabel}</td>
-                            <td className="px-4 py-2 border border-slate-600">{applyFactors((mGeoBase as any)[dayKey]).toLocaleString()}</td>
-                            <td className="px-4 py-2 border border-slate-600">{applyFactors((pondBase as any)[dayKey]).toLocaleString()}</td>
-                            <td className="px-4 py-2 border border-slate-600">{applyFactors((mDuBase as any)[dayKey]).toLocaleString()}</td>
-                            <td className="px-4 py-2 border border-slate-600">{applyFactors((eCalendBase as any)[dayKey]).toLocaleString()}</td>
+                          <tr key={dayKey} className="border-b border-[rgba(99,102,241,0.08)] hover:bg-[var(--color-glass-hover)]">
+                            <td className="px-4 py-2 border border-[rgba(99,102,241,0.12)] text-left font-bold">{dayLabel}</td>
+                            <td className="px-4 py-2 border border-[rgba(99,102,241,0.12)]">{applyFactors((mGeoBase as any)[dayKey]).toLocaleString()}</td>
+                            <td className="px-4 py-2 border border-[rgba(99,102,241,0.12)]">{applyFactors((pondBase as any)[dayKey]).toLocaleString()}</td>
+                            <td className="px-4 py-2 border border-[rgba(99,102,241,0.12)]">{applyFactors((mDuBase as any)[dayKey]).toLocaleString()}</td>
+                            <td className="px-4 py-2 border border-[rgba(99,102,241,0.12)]">{applyFactors((eCalendBase as any)[dayKey]).toLocaleString()}</td>
                           </tr>
                         );
                       })}
                       <tr className="font-bold text-blue-400 bg-slate-700/20">
-                        <td className="px-4 py-2 border border-slate-600 text-left">Total</td>
-                        <td className="px-4 py-2 border border-slate-600">
+                        <td className="px-4 py-2 border border-[rgba(99,102,241,0.12)] text-left">Total</td>
+                        <td className="px-4 py-2 border border-[rgba(99,102,241,0.12)]">
                           {['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'].reduce((acc, d) => acc + applyFactors((mGeoBase as any)[d]), 0).toLocaleString()}
                         </td>
-                        <td className="px-4 py-2 border border-slate-600">
+                        <td className="px-4 py-2 border border-[rgba(99,102,241,0.12)]">
                           {['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'].reduce((acc, d) => acc + applyFactors((pondBase as any)[d]), 0).toLocaleString()}
                         </td>
-                        <td className="px-4 py-2 border border-slate-600">
+                        <td className="px-4 py-2 border border-[rgba(99,102,241,0.12)]">
                           {['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'].reduce((acc, d) => acc + applyFactors((mDuBase as any)[d]), 0).toLocaleString()}
                         </td>
-                        <td className="px-4 py-2 border border-slate-600">
+                        <td className="px-4 py-2 border border-[rgba(99,102,241,0.12)]">
                           {['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'].reduce((acc, d) => acc + applyFactors((eCalendBase as any)[d]), 0).toLocaleString()}
                         </td>
                       </tr>
@@ -2682,16 +2689,16 @@ export default function Dashboard() {
         )}
 
         {activeTab === 'previsao_mensal' && (
-          <div className="space-y-6 mt-8">
-            <h2 className="text-2xl font-bold border-b border-slate-700 pb-2">Previsão Mensal</h2>
+          <div key="previsao_mensal" className="space-y-6 mt-8 page-enter">
+            <h2 className="text-2xl font-bold border-b border-[rgba(99,102,241,0.12)] pb-2">Previsão Mensal</h2>
 
-            <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 flex flex-col md:flex-row items-end gap-4">
+            <div className="glass p-6 flex flex-col md:flex-row items-end gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-400 mb-1">Mês</label>
                 <select
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                  className="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white w-full md:w-40"
+                  className="bg-slate-700 border border-[rgba(99,102,241,0.12)] rounded px-3 py-2 text-white w-full md:w-40"
                 >
                   {[...Array(12)].map((_, i) => (
                     <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('pt-BR', { month: 'long' })}</option>
@@ -2704,7 +2711,7 @@ export default function Dashboard() {
                   type="number"
                   value={selectedYear}
                   onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white w-full md:w-32"
+                  className="bg-slate-700 border border-[rgba(99,102,241,0.12)] rounded px-3 py-2 text-white w-full md:w-32"
                 />
               </div>
               <div>
@@ -2712,7 +2719,7 @@ export default function Dashboard() {
                 <select
                   value={selectedWeekday}
                   onChange={(e) => setSelectedWeekday(e.target.value)}
-                  className="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-white w-full md:w-40"
+                  className="bg-slate-700 border border-[rgba(99,102,241,0.12)] rounded px-3 py-2 text-white w-full md:w-40"
                 >
                   <option value="all">Todos os Dias</option>
                   <option value="1">Segunda-feira</option>
@@ -2802,7 +2809,7 @@ export default function Dashboard() {
             {filteredMonthForecastData.length > 0 && (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 flex flex-col justify-between">
+                  <div className="glass p-6 flex flex-col justify-between">
                     <div>
                       <div className="flex justify-between items-start">
                         <p className="text-slate-400 text-sm">Volume Previsto ({selectedWeekday === 'all' ? 'Mês' : 'Filtro'})</p>
@@ -2820,7 +2827,7 @@ export default function Dashboard() {
                     </div>
 
                     {showSavePrompt && (
-                      <div className="mt-4 p-3 bg-slate-900 rounded border border-emerald-500/30">
+                      <div className="mt-4 p-3 bg-[var(--color-bg-surface)] rounded border border-emerald-500/30">
                         <p className="text-xs text-slate-300 mb-2">Nome do Cenário:</p>
                         <div className="flex gap-2">
                           <input
@@ -2828,7 +2835,7 @@ export default function Dashboard() {
                             value={scenarioName}
                             onChange={e => setScenarioName(e.target.value)}
                             placeholder="Ex: Pessimista 2026..."
-                            className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-emerald-500"
+                            className="flex-1 bg-slate-800 border border-[rgba(99,102,241,0.12)] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-emerald-500"
                           />
                           <button onClick={saveScenario} className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded text-sm transition-colors">
                             Salvar
@@ -2840,7 +2847,7 @@ export default function Dashboard() {
                       </div>
                     )}
                   </div>
-                  <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+                  <div className="glass p-6">
                     <p className="text-slate-400 text-sm">TMO Médio Projetado (Mês)</p>
                     <p className="text-3xl font-bold text-purple-400">
                       {filteredMonthForecastData.length > 0
@@ -2848,7 +2855,7 @@ export default function Dashboard() {
                         : 0} seg
                     </p>
                   </div>
-                  <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+                  <div className="glass p-6">
                     <p className="text-slate-400 text-sm">TMO Máx. Projetado (Mês)</p>
                     <p className="text-3xl font-bold text-amber-400">
                       {filteredMonthForecastData.length > 0
@@ -2859,7 +2866,7 @@ export default function Dashboard() {
                 </div>
 
                 {monthComparisons && selectedWeekday === 'all' && (
-                  <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+                  <div className="glass p-6">
                     <h3 className="text-lg font-semibold mb-4 text-emerald-400 flex items-center gap-2">
                       <span>📊</span> Justificativa do Volume Projetado (Picos)
                     </h3>
@@ -2869,13 +2876,13 @@ export default function Dashboard() {
                         <p className="text-2xl font-bold text-white">{monthComparisons.volume_projetado.toLocaleString()}</p>
                         <p className="text-sm mt-1 font-medium text-slate-400">Total previsto para {selectedMonth}/{selectedYear}</p>
                         {monthComparisons.anos_anteriores && monthComparisons.anos_anteriores.length > 0 && (
-                          <div className="mt-4 pt-3 border-t border-slate-600/50">
+                          <div className="mt-4 pt-3 border-t border-[rgba(99,102,241,0.1)]">
                             <div className="flex justify-between items-center mb-2">
                               <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Racional de Cálculo IA</p>
                               <select
                                 value={rationaleBase}
                                 onChange={(e) => setRationaleBase(e.target.value as 'anos_anteriores' | 'ultimos_3_meses')}
-                                className="text-[9px] bg-slate-800 text-slate-300 border border-slate-600 rounded px-1 py-0.5 outline-none cursor-pointer"
+                                className="text-[9px] bg-slate-800 text-slate-300 border border-[rgba(99,102,241,0.12)] rounded px-1 py-0.5 outline-none cursor-pointer"
                               >
                                 <option value="anos_anteriores">Anos Anteriores (Sazonal)</option>
                                 <option value="ultimos_3_meses">Últimos 3 Meses (Tendência)</option>
@@ -2909,14 +2916,14 @@ export default function Dashboard() {
                                 return (
                                   <>
                                     <div className="space-y-1">
-                                      <p className="text-slate-400 border-b border-slate-700/50 pb-1 mb-1">1. Média Base ({rationaleBase === 'anos_anteriores' ? 'Sazonal' : 'Recente'})</p>
+                                      <p className="text-slate-400 border-b border-[rgba(99,102,241,0.08)] pb-1 mb-1">1. Média Base ({rationaleBase === 'anos_anteriores' ? 'Sazonal' : 'Recente'})</p>
                                       <div className="flex justify-between"><span className="text-slate-500 pl-2">Volume Total:</span><span className="font-medium">{baseVol.toLocaleString()}</span></div>
                                       <div className="flex justify-between"><span className="text-slate-500 pl-2">Dias Úteis (DU):</span><span className="font-medium">{baseDU.toFixed(1)}</span></div>
                                       <div className="flex justify-between"><span className="text-slate-500 pl-2">Média Volume / DU:</span><span className="font-medium">{baseVolDU.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span></div>
                                     </div>
 
                                     <div className="space-y-1">
-                                      <p className="text-slate-400 border-b border-slate-700/50 pb-1 mb-1">2. Cenário Projetado ({selectedMonth}/{selectedYear})</p>
+                                      <p className="text-slate-400 border-b border-[rgba(99,102,241,0.08)] pb-1 mb-1">2. Cenário Projetado ({selectedMonth}/{selectedYear})</p>
                                       <div className="flex justify-between text-white"><span className="text-slate-500 pl-2">Volume Total:</span><span className="font-bold">{projVol.toLocaleString()}</span></div>
                                       <div className="flex justify-between"><span className="text-slate-500 pl-2">Dias Úteis (DU):</span><span className="font-medium text-emerald-400">{projDU}</span></div>
                                       <div className="flex justify-between">
@@ -2930,7 +2937,7 @@ export default function Dashboard() {
                                       </div>
                                     </div>
 
-                                    <div className="bg-slate-900/50 p-2 rounded border border-slate-700/50 mt-2">
+                                    <div className="bg-[var(--color-bg-surface)] p-2 rounded border border-[rgba(99,102,241,0.08)] mt-2">
                                       <div className="flex justify-between text-xs">
                                         <span className="text-slate-400" title="Ajuste fino da IA considerando calendário e tendência">Ajuste Total da IA:</span>
                                         <span className={`font-bold ${diffVol >= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
@@ -2939,7 +2946,7 @@ export default function Dashboard() {
                                       </div>
                                     </div>
 
-                                    <div className="mt-3 text-[10px] text-slate-500 leading-tight border-t border-slate-700/50 pt-2">
+                                    <div className="mt-3 text-[10px] text-slate-500 leading-tight border-t border-[rgba(99,102,241,0.08)] pt-2">
                                       {rationaleBase === 'anos_anteriores' ? (
                                         <p><strong className="text-slate-400">Por que comparar com Anos Anteriores?</strong> Serve como linha de base (baseline). Mostra o quanto a IA ajustou a média normal considerando as particularidades do calendário atual (dias úteis a mais/menos, feriados, DMM).</p>
                                       ) : (
@@ -3004,7 +3011,7 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    <div className="mt-6 pt-6 border-t border-slate-700/50">
+                    <div className="mt-6 pt-6 border-t border-[rgba(99,102,241,0.08)]">
                       <h4 className="text-sm font-semibold mb-3 text-slate-300 flex justify-between items-end">
                         <span>Comparativo Histórico</span>
                       </h4>
@@ -3016,7 +3023,7 @@ export default function Dashboard() {
 
                         return (
                           <>
-                            <div className="bg-blue-900/20 p-3 rounded-lg border border-blue-800/40 mb-4 flex justify-between items-center">
+                            <div className="glass-subtle p-3 mb-4 flex justify-between items-center border-l-2 border-l-[var(--color-primary)]">
                               <span className="text-blue-300 text-sm font-medium">Projeção {selectedMonth}/{selectedYear}</span>
                               <div className="flex gap-6 text-sm">
                                 <span>Total: <strong className="text-white">{projVol.toLocaleString()}</strong></span>
@@ -3025,7 +3032,7 @@ export default function Dashboard() {
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div className="bg-slate-700/20 p-4 rounded-lg border border-slate-700/50">
+                              <div className="glass-subtle p-4">
                                 <p className="text-xs text-slate-400 uppercase mb-3 font-medium">Mesmo mês (Anos Anteriores)</p>
                                 {monthComparisons.anos_anteriores.length > 0 ? (
                                   monthComparisons.anos_anteriores.map((hist, idx) => {
@@ -3036,7 +3043,7 @@ export default function Dashboard() {
                                     const diffDu = projVolDU > 0 ? ((projVolDU / volDu) - 1) * 100 : 0;
 
                                     return (
-                                      <div key={idx} className="flex justify-between items-center text-sm py-2 border-b border-slate-700/30 last:border-0">
+                                      <div key={idx} className="flex justify-between items-center text-sm py-2 border-b border-[rgba(99,102,241,0.12)]/30 last:border-0">
                                         <div className="flex flex-col">
                                           <span className="font-medium text-slate-300">{hist.ano_mes}</span>
                                           <span className="text-[10px] text-slate-500">{du} Dias Úteis</span>
@@ -3061,7 +3068,7 @@ export default function Dashboard() {
                                 )}
                               </div>
 
-                              <div className="bg-slate-700/20 p-4 rounded-lg border border-slate-700/50">
+                              <div className="glass-subtle p-4">
                                 <p className="text-xs text-slate-400 uppercase mb-3 font-medium">Últimos 3 Meses</p>
                                 {monthComparisons.ultimos_3_meses.length > 0 ? (
                                   monthComparisons.ultimos_3_meses.map((hist, idx) => {
@@ -3072,7 +3079,7 @@ export default function Dashboard() {
                                     const diffDu = projVolDU > 0 ? ((projVolDU / volDu) - 1) * 100 : 0;
 
                                     return (
-                                      <div key={idx} className="flex justify-between items-center text-sm py-2 border-b border-slate-700/30 last:border-0">
+                                      <div key={idx} className="flex justify-between items-center text-sm py-2 border-b border-[rgba(99,102,241,0.12)]/30 last:border-0">
                                         <div className="flex flex-col">
                                           <span className="font-medium text-slate-300">{hist.ano_mes}</span>
                                           <span className="text-[10px] text-slate-500">{du} Dias Úteis</span>
@@ -3104,7 +3111,7 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+                <div className="glass p-6">
                   <h3 className="text-lg font-semibold mb-6">Volume e TMO Diário ({selectedMonth}/{selectedYear})</h3>
                   <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
@@ -3166,7 +3173,7 @@ export default function Dashboard() {
                 </div>
 
                 {aggregatedCurve.length > 0 && (
-                  <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 mt-6">
+                  <div className="glass p-6 mt-6">
                     <div className="flex justify-between items-center mb-6">
                       <div>
                         <h3 className="text-lg font-semibold">Curva Pronta (Volume + TMO Consolidado)</h3>
@@ -3225,7 +3232,7 @@ export default function Dashboard() {
                 )}
 
                 {selectedMonthDayData && selectedMonthDayData.intervalos && (
-                  <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+                  <div className="glass p-6">
                     <div className="flex justify-between items-center mb-6">
                       <h3 className="text-lg font-semibold">Curva Intra-diária do Dia Específico</h3>
                       <span className="text-sm font-medium bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full">
@@ -3280,19 +3287,19 @@ export default function Dashboard() {
         )}
         {activeTab === 'metodologia' && stats && stats.metodologia && (
           <div className="space-y-6 mt-8">
-            <h2 className="text-2xl font-bold border-b border-slate-700 pb-2 flex items-center gap-2">
+            <h2 className="text-2xl font-bold border-b border-[rgba(99,102,241,0.12)] pb-2 flex items-center gap-2">
               <span>🤖</span> Metodologia e Modelos (IA)
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+              <div className="glass p-6">
                 <h3 className="text-lg font-semibold mb-4 text-emerald-400">Modelos de IA Testados (Volume)</h3>
                 <p className="text-sm text-slate-400 mb-4">
                   O sistema treinou simultaneamente 6 algoritmos diferentes para o seu volume de chamadas e escolheu automaticamente aquele com a menor margem de erro absoluta (MAE).
                 </p>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left text-slate-300">
+                  <table className="data-table">
                     <thead className="text-xs text-slate-400 bg-slate-700/50 uppercase">
                       <tr>
                         <th className="px-4 py-2">Algoritmo (Modelo)</th>
@@ -3302,7 +3309,7 @@ export default function Dashboard() {
                     </thead>
                     <tbody>
                       {stats.metodologia.modelos_testados?.map((m, i) => (
-                        <tr key={i} className={`border-b border-slate-700/50 hover:bg-slate-700/30 ${m.modelo === stats.metodologia?.algoritmo_volume ? 'bg-emerald-500/10' : ''}`}>
+                        <tr key={i} className={`border-b border-[rgba(99,102,241,0.08)] hover:bg-[var(--color-glass-hover)] ${m.modelo === stats.metodologia?.algoritmo_volume ? 'bg-emerald-500/10' : ''}`}>
                           <td className="px-4 py-2 font-medium">
                             {m.modelo} {m.modelo === stats.metodologia?.algoritmo_volume && <span className="ml-2 text-emerald-400" title="Cenário Aconselhado / Modelo Campeão">🏆 Campeão</span>}
                           </td>
@@ -3315,8 +3322,8 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+              <div className="space-y-5">
+                <div className="glass p-6">
                   <h3 className="text-lg font-semibold mb-3 text-blue-400 flex items-center gap-2">
                     <CalendarDays size={20} /> Sazonalidade
                   </h3>
@@ -3325,7 +3332,7 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+                <div className="glass p-6">
                   <h3 className="text-lg font-semibold mb-3 text-amber-400 flex items-center gap-2">
                     <TrendingUp size={20} /> Flutuação e Outliers
                   </h3>
@@ -3334,7 +3341,7 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+                <div className="glass p-6">
                   <h3 className="text-lg font-semibold mb-3 text-purple-400">Outros Metadados</h3>
                   <ul className="text-sm text-slate-300 space-y-2">
                     <li><strong>Modelo de TMO:</strong> {stats?.metodologia?.algoritmo_tmo}</li>
@@ -3348,8 +3355,8 @@ export default function Dashboard() {
         )}
 
         {activeTab === 'dimensionamento' && (
-          <div className="space-y-6 mt-8">
-            <div className="flex justify-between items-end border-b border-slate-700 pb-2">
+          <div key="dimensionamento" className="space-y-6 mt-8 page-enter">
+            <div className="flex justify-between items-end border-b border-[rgba(99,102,241,0.12)] pb-2">
               <h2 className="text-2xl font-bold flex items-center gap-2 text-orange-400">
                 <Users size={28} /> Dimensionamento Erlang C
                 {isCalculatingErlang && (
@@ -3364,7 +3371,7 @@ export default function Dashboard() {
                 <select
                   value={dimSelectedDay || (monthComparisons?.dmm_data || (monthForecastData[0] ? monthForecastData[0].data : ''))}
                   onChange={(e) => setDimSelectedDay(e.target.value)}
-                  className="bg-slate-800 border border-slate-600 text-slate-200 rounded px-3 py-1 outline-none focus:border-blue-500"
+                  className="bg-slate-800 border border-[rgba(99,102,241,0.12)] text-slate-200 rounded px-3 py-1 outline-none focus:border-blue-500"
                 >
                   {monthForecastData.map(d => (
                     <option key={d.data} value={d.data}>
@@ -3377,7 +3384,7 @@ export default function Dashboard() {
             </div>
 
             {/* Sub-abas do Dimensionamento */}
-            <div className="flex gap-1 border-b border-slate-700/60 mb-2">
+            <div className="flex gap-1 border-b border-[rgba(99,102,241,0.12)]/60 mb-2">
               <button
                 onClick={() => setDimSubTab('escala')}
                 className={`px-5 py-2 text-sm font-semibold rounded-t transition-colors ${dimSubTab === 'escala' ? 'bg-orange-500/20 text-orange-300 border-b-2 border-orange-400' : 'text-slate-400 hover:text-slate-200'}`}
@@ -3396,27 +3403,27 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
               {wfmMetrics && (
                 <>
-                  <div className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
+                  <div className="bg-slate-800/80 rounded-lg p-3 border border-[rgba(99,102,241,0.08)]">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wider">Vol. Médio/Dia</p>
                     <p className="text-lg font-bold text-blue-400">{wfmMetrics.avg_daily_volume?.toLocaleString()}</p>
                   </div>
-                  <div className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
+                  <div className="bg-slate-800/80 rounded-lg p-3 border border-[rgba(99,102,241,0.08)]">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wider">TMO Médio</p>
                     <p className="text-lg font-bold text-purple-400">{wfmMetrics.avg_tmo?.toFixed(0)}s</p>
                   </div>
-                  <div className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
+                  <div className="bg-slate-800/80 rounded-lg p-3 border border-[rgba(99,102,241,0.08)]">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wider">Hora Pico</p>
                     <p className="text-lg font-bold text-orange-400">{wfmMetrics.peak_hour || '-'}</p>
                   </div>
-                  <div className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
+                  <div className="bg-slate-800/80 rounded-lg p-3 border border-[rgba(99,102,241,0.08)]">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wider">Índice Volatilidade</p>
                     <p className="text-lg font-bold text-yellow-400">{wfmMetrics.volatility_index?.toFixed(2) || '-'}</p>
                   </div>
-                  <div className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
+                  <div className="bg-slate-800/80 rounded-lg p-3 border border-[rgba(99,102,241,0.08)]">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wider">Ratio Semana/FDS</p>
                     <p className="text-lg font-bold text-emerald-400">{wfmMetrics.weekday_weekend_ratio?.toFixed(1) || '-'}</p>
                   </div>
-                  <div className="bg-slate-800/80 rounded-lg p-3 border border-slate-700/50">
+                  <div className="bg-slate-800/80 rounded-lg p-3 border border-[rgba(99,102,241,0.08)]">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wider">Produtividade</p>
                     <p className="text-lg font-bold text-cyan-400">
                       {wfmCostEstimate ? wfmCostEstimate.productivity + ' cham/h' : '-'}
@@ -3427,14 +3434,14 @@ export default function Dashboard() {
             </div>
 
             {dimSubTab === 'escala' && (<>
-              <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+              <div className="glass p-6">
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-6 mb-6">
                   <div>
-                    <label className="block text-sm text-slate-400 mb-1">Curva de Distribuição</label>
+                    <label className="label-text">Curva de Distribuição</label>
                     <select
                       value={dimCurveType}
                       onChange={e => setDimCurveType(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"
+                      className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-2 text-white"
                     >
                       <option value="padrao">Padrão (Dia a Dia)</option>
                       <optgroup label="Visões Gerais">
@@ -3478,29 +3485,29 @@ export default function Dashboard() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-400 mb-1">SLA Alvo (%)</label>
-                    <input type="number" min="10" max="100" value={dimTargetSlaPercent === 0 ? '' : dimTargetSlaPercent} onChange={e => setDimTargetSlaPercent(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" />
+                    <label className="label-text">SLA Alvo (%)</label>
+                    <input type="number" min="10" max="100" value={dimTargetSlaPercent === 0 ? '' : dimTargetSlaPercent} onChange={e => setDimTargetSlaPercent(Number(e.target.value))} className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-2 text-white" />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-400 mb-1">Tempo Alvo (s)</label>
-                    <input type="number" min="5" max="300" value={dimTargetSlaTime === 0 ? '' : dimTargetSlaTime} onChange={e => setDimTargetSlaTime(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" />
+                    <label className="label-text">Tempo Alvo (s)</label>
+                    <input type="number" min="5" max="300" value={dimTargetSlaTime === 0 ? '' : dimTargetSlaTime} onChange={e => setDimTargetSlaTime(Number(e.target.value))} className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-2 text-white" />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-400 mb-1">TMA (s)</label>
-                    <input type="number" min="0" placeholder="Auto" value={dimTma} onChange={e => setDimTma(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-600" />
+                    <label className="label-text">TMA (s)</label>
+                    <input type="number" min="0" placeholder="Auto" value={dimTma} onChange={e => setDimTma(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-2 text-white placeholder-slate-600" />
                   </div>
                   <div>
                     <label className="block text-sm text-amber-400 mb-1" title="Forçar um volume total para o mês mantendo a curva">Vol. Fixo</label>
-                    <input type="number" min="0" placeholder="Auto" value={dimFixedVolume} onChange={e => setDimFixedVolume(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-amber-900/20 border border-amber-600/50 rounded p-2 text-amber-100 placeholder-amber-700/50" />
+                    <input type="number" min="0" placeholder="Auto" value={dimFixedVolume} onChange={e => setDimFixedVolume(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-[rgba(251,191,36,0.06)] border border-amber-600/50 rounded p-2 text-amber-100 placeholder-amber-700/50" />
                   </div>
                   <div>
                     <label className="block text-sm text-amber-400 mb-1" title="Travar quantidade de operadores e ver o que acontece com o Nível de Serviço">Forçar PAs</label>
-                    <input type="number" min="0" placeholder="Livre" value={dimFixedAgents} onChange={e => setDimFixedAgents(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-amber-900/20 border border-amber-600/50 rounded p-2 text-amber-100 placeholder-amber-700/50" />
+                    <input type="number" min="0" placeholder="Livre" value={dimFixedAgents} onChange={e => setDimFixedAgents(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-[rgba(251,191,36,0.06)] border border-amber-600/50 rounded p-2 text-amber-100 placeholder-amber-700/50" />
                   </div>
                 </div>
 
-                <div className="bg-slate-900/40 p-4 rounded-lg border border-slate-600/50">
-                  <label className="block text-sm text-slate-300 font-semibold mb-3 flex justify-between border-b border-slate-700/50 pb-2">
+                <div className="glass-subtle p-4">
+                  <label className="block text-sm text-slate-300 font-semibold mb-3 flex justify-between border-b border-[rgba(99,102,241,0.08)] pb-2">
                     <span>Fator de Perda (Shrinkage) por Turno</span>
                     <span className="text-rose-400 text-xs">Média Geral: {dimShrinkage.toFixed(2)}%</span>
                   </label>
@@ -3510,7 +3517,7 @@ export default function Dashboard() {
                       const conf = dimShrinkageConfig[shiftType] || defaultShrinkage;
                       const totalShift = Object.values(conf).reduce((sum, val) => sum + val, 0);
                       return (
-                        <div key={shiftType} className="bg-slate-800/80 p-3 rounded-lg border border-slate-700 shadow-sm">
+                        <div key={shiftType} className="glass-subtle p-3">
                           <div className="flex justify-between items-center mb-3">
                             <span className="text-sm font-bold text-emerald-400">{shiftDef?.label}</span>
                             <span className="text-xs font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded">{totalShift.toFixed(2)}%</span>
@@ -3518,23 +3525,23 @@ export default function Dashboard() {
                           <div className="grid grid-cols-5 gap-1.5">
                             <div>
                               <label className="block text-[9px] text-slate-400 uppercase text-center font-semibold mb-0.5" title="Absenteísmo">ABS</label>
-                              <input type="number" step="0.1" value={conf.abs === 0 ? '' : conf.abs} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], abs: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
+                              <input type="number" step="0.1" value={conf.abs === 0 ? '' : conf.abs} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], abs: Number(e.target.value) } }))} className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
                             </div>
                             <div>
                               <label className="block text-[9px] text-slate-400 uppercase text-center font-semibold mb-0.5" title="Pausa NR17">NR17</label>
-                              <input type="number" step="0.1" value={conf.nr17 === 0 ? '' : conf.nr17} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], nr17: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
+                              <input type="number" step="0.1" value={conf.nr17 === 0 ? '' : conf.nr17} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], nr17: Number(e.target.value) } }))} className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
                             </div>
                             <div>
                               <label className="block text-[9px] text-slate-400 uppercase text-center font-semibold mb-0.5" title="Treinamento">TRN</label>
-                              <input type="number" step="0.1" value={conf.treinamento === 0 ? '' : conf.treinamento} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], treinamento: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
+                              <input type="number" step="0.1" value={conf.treinamento === 0 ? '' : conf.treinamento} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], treinamento: Number(e.target.value) } }))} className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
                             </div>
                             <div>
                               <label className="block text-[9px] text-slate-400 uppercase text-center font-semibold mb-0.5" title="Turnover">TO</label>
-                              <input type="number" step="0.1" value={conf.turnover === 0 ? '' : conf.turnover} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], turnover: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
+                              <input type="number" step="0.1" value={conf.turnover === 0 ? '' : conf.turnover} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], turnover: Number(e.target.value) } }))} className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
                             </div>
                             <div>
                               <label className="block text-[9px] text-slate-400 uppercase text-center font-semibold mb-0.5">OUTR</label>
-                              <input type="number" step="0.1" value={conf.outros === 0 ? '' : conf.outros} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], outros: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
+                              <input type="number" step="0.1" value={conf.outros === 0 ? '' : conf.outros} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], outros: Number(e.target.value) } }))} className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
                             </div>
                           </div>
                         </div>
@@ -3545,25 +3552,25 @@ export default function Dashboard() {
               </div>
 
               {/* Cost Estimation Configuration */}
-              <div className="bg-slate-800 rounded-xl p-5 shadow-xl border border-slate-700/50 mb-4">
+              <div className="glass p-5 mb-4">
                 <h3 className="text-base font-semibold mb-4 text-emerald-400 flex items-center gap-2">
                   <span>💰</span> Custo Operacional
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">Custo/Agente/Mês (R$)</label>
+                    <label className="label-text">Custo/Agente/Mês (R$)</label>
                     <input type="number" value={costPerAgent} onChange={e => setCostPerAgent(Number(e.target.value))}
-                      className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                      className="input-field text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">Overhead (%)</label>
+                    <label className="label-text">Overhead (%)</label>
                     <input type="number" value={overheadPercent} onChange={e => setOverheadPercent(Number(e.target.value))}
-                      className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                      className="input-field text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">Tempo Paciência (s)</label>
+                    <label className="label-text">Tempo Paciência (s)</label>
                     <input type="number" value={patienceTime} onChange={e => setPatienceTime(Number(e.target.value))}
-                      className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                      className="input-field text-sm" />
                   </div>
                   <div className="flex items-end">
                     <button onClick={() => setShowSensitivity(!showSensitivity)}
@@ -3575,19 +3582,19 @@ export default function Dashboard() {
                 
                 {wfmCostEstimate && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-                    <div className="bg-slate-900/50 rounded-lg p-3">
+                    <div className="glass-subtle p-3">
                       <p className="text-[10px] text-slate-500 uppercase">Custo Total Mensal</p>
                       <p className="text-xl font-bold text-emerald-400">R$ {wfmCostEstimate.totalMonthlyCost.toLocaleString()}</p>
                     </div>
-                    <div className="bg-slate-900/50 rounded-lg p-3">
+                    <div className="glass-subtle p-3">
                       <p className="text-[10px] text-slate-500 uppercase">Custo/Agente (c/ overhead)</p>
                       <p className="text-xl font-bold text-blue-400">R$ {wfmCostEstimate.costPerAgentMonth.toLocaleString()}</p>
                     </div>
-                    <div className="bg-slate-900/50 rounded-lg p-3">
+                    <div className="glass-subtle p-3">
                       <p className="text-[10px] text-slate-500 uppercase">Custo/Hora Trabalhada</p>
                       <p className="text-xl font-bold text-purple-400">R$ {wfmCostEstimate.costPerAgentHour.toFixed(2)}</p>
                     </div>
-                    <div className="bg-slate-900/50 rounded-lg p-3">
+                    <div className="glass-subtle p-3">
                       <p className="text-[10px] text-slate-500 uppercase">Custo/Chamada</p>
                       <p className="text-xl font-bold text-orange-400">R$ {wfmCostEstimate.costPerCall.toFixed(2)}</p>
                     </div>
@@ -3602,9 +3609,9 @@ export default function Dashboard() {
                   </h3>
                   <p className="text-xs text-slate-400 mb-3">Impacto da variação de volume no dimensionamento e SLA</p>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="data-table">
                       <thead>
-                        <tr className="text-slate-400 text-xs border-b border-slate-700">
+                        <tr className="text-slate-400 text-xs border-b border-[rgba(99,102,241,0.12)]">
                           <th className="py-2 px-2 text-left">Var. Volume</th>
                           <th className="py-2 px-2 text-right">Volume</th>
                           <th className="py-2 px-2 text-right">Erlangs</th>
@@ -3617,7 +3624,7 @@ export default function Dashboard() {
                       </thead>
                       <tbody>
                         {slaSensitivityData.map(row => (
-                          <tr key={row.volumeChangePct} className="border-b border-slate-800 hover:bg-slate-700/30">
+                          <tr key={row.volumeChangePct} className="border-b border-[rgba(99,102,241,0.06)] hover:bg-[var(--color-glass-hover)]">
                             <td className={`py-2 px-2 font-medium ${row.volumeChangePct > 0 ? 'text-rose-400' : row.volumeChangePct < 0 ? 'text-emerald-400' : 'text-white'}`}>
                               {row.volumeChangePct > 0 ? '+' : ''}{row.volumeChangePct}%
                             </td>
@@ -3641,14 +3648,14 @@ export default function Dashboard() {
               )}
 
               {shiftComparisonData.length > 0 && (
-                <div className="bg-slate-800 rounded-xl p-5 shadow-xl border border-slate-700/50 mb-4">
+                <div className="glass p-5 mb-4">
                   <h3 className="text-base font-semibold mb-4 text-cyan-400 flex items-center gap-2">
                     <span>⚖️</span> Comparativo de Combinações de Turnos
                   </h3>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="data-table">
                       <thead>
-                        <tr className="text-slate-400 text-xs border-b border-slate-700">
+                        <tr className="text-slate-400 text-xs border-b border-[rgba(99,102,241,0.12)]">
                           <th className="py-2 px-2 text-left">Turnos</th>
                           <th className="py-2 px-2 text-right">HC Diário</th>
                           <th className="py-2 px-2 text-right">HC Mensal</th>
@@ -3661,7 +3668,7 @@ export default function Dashboard() {
                         {shiftComparisonData.map((row, idx) => {
                           const isCurrent = JSON.stringify(row.shifts.sort()) === JSON.stringify(dimEnabledShifts.sort());
                           return (
-                            <tr key={idx} className={`border-b border-slate-800 ${isCurrent ? 'bg-blue-900/20' : 'hover:bg-slate-700/30'}`}>
+                            <tr key={idx} className={`border-b border-[rgba(99,102,241,0.06)] ${isCurrent ? 'bg-blue-900/20' : 'hover:bg-[var(--color-glass-hover)]'}`}>
                               <td className="py-2 px-2 font-medium">
                                 {row.shifts.map(s => AVAILABLE_SHIFTS.find(a => a.type === s)?.label?.split(' ')[0] || s).join(' + ')}
                                 {isCurrent && <span className="ml-2 text-xs text-blue-400">(Atual)</span>}
@@ -3682,10 +3689,10 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+              <div className="glass p-6">
                 <h3 className="text-lg font-semibold mb-4 text-emerald-400">Configuração Avançada WFM (Escalas e Turnos)</h3>
 
-                <div className="mb-6 border-b border-slate-700/50 pb-6">
+                <div className="mb-6 border-b border-[rgba(99,102,241,0.08)] pb-6">
                   <div className="flex justify-between items-center mb-3">
                     <label className="block text-sm text-slate-300 font-semibold">Turnos Disponíveis para Simulação de Escala</label>
                     <button onClick={runOptimization} className="bg-amber-600 hover:bg-amber-500 text-white px-3 py-1.5 rounded shadow text-sm font-semibold transition flex items-center gap-2">
@@ -3694,10 +3701,10 @@ export default function Dashboard() {
                   </div>
                   <div className="flex flex-wrap gap-4">
                     {AVAILABLE_SHIFTS.map(shift => (
-                      <label key={shift.type} className={`flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg border ${dimEnabledShifts.includes(shift.type) ? 'bg-emerald-900/30 border-emerald-500/50 text-emerald-200' : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800'}`}>
+                      <label key={shift.type} className={`flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg border ${dimEnabledShifts.includes(shift.type) ? 'bg-emerald-900/30 border-emerald-500/50 text-emerald-200' : 'bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-slate-400 hover:bg-[var(--color-bg-hover)]'}`}>
                         <input
                           type="checkbox"
-                          className="rounded bg-slate-900 border-slate-600 text-emerald-500 focus:ring-emerald-500"
+                          className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-emerald-500 focus:ring-emerald-500"
                           checked={dimEnabledShifts.includes(shift.type)}
                           onChange={(e) => {
                             if (e.target.checked) setDimEnabledShifts([...dimEnabledShifts, shift.type]);
@@ -3721,11 +3728,11 @@ export default function Dashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   <div className="flex flex-col gap-4">
                     <div>
-                      <label className="block text-sm text-slate-400 mb-1" title="Flexibiliza a exigência de SLA em alguns picos se a média agregada do período bater a meta">Estratégia de SLA (Otimização)</label>
+                      <label className="label-text" title="Flexibiliza a exigência de SLA em alguns picos se a média agregada do período bater a meta">Estratégia de SLA (Otimização)</label>
                       <select
                         value={dimStrategy}
                         onChange={e => setDimStrategy(e.target.value as SlaStrategy)}
-                        className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white outline-none"
+                        className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-2 text-white outline-none"
                       >
                         <option value="monthly_avg">Média Ponderada do Mês (Trade-off DMM)</option>
                       </select>
@@ -3755,7 +3762,7 @@ export default function Dashboard() {
                   </div>
 
                   <div className="col-span-1 md:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="p-3 bg-slate-700/30 rounded border border-slate-600/50">
+                    <div className="p-3 bg-slate-700/30 rounded border border-[rgba(99,102,241,0.1)]">
                       <div className="flex justify-between items-center text-sm text-slate-300 mb-2 font-semibold">
                         Seg-Sex
                         <div className="flex items-center gap-3">
@@ -3767,24 +3774,24 @@ export default function Dashboard() {
                                 if (e.target.checked) setDimOpHours({ ...dimOpHours, weekdays: { start: '00:00', end: '23:59', closed: false } });
                                 else setDimOpHours({ ...dimOpHours, weekdays: { start: '08:00', end: '20:00', closed: false } });
                               }}
-                              className="rounded bg-slate-900 border-slate-600 text-blue-500 focus:ring-blue-500"
+                              className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-blue-500 focus:ring-blue-500"
                             />
                             24h
                           </label>
                           <label className="flex items-center gap-1 text-xs font-normal cursor-pointer hover:text-slate-200">
-                            <input type="checkbox" checked={dimOpHours.weekdays.closed} onChange={e => setDimOpHours({ ...dimOpHours, weekdays: { ...dimOpHours.weekdays, closed: e.target.checked } })} className="rounded bg-slate-900 border-slate-600" />
+                            <input type="checkbox" checked={dimOpHours.weekdays.closed} onChange={e => setDimOpHours({ ...dimOpHours, weekdays: { ...dimOpHours.weekdays, closed: e.target.checked } })} className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)]" />
                             Fechado
                           </label>
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <input type="time" disabled={dimOpHours.weekdays.closed || (dimOpHours.weekdays.start === '00:00' && dimOpHours.weekdays.end === '23:59')} value={dimOpHours.weekdays.start} onChange={e => setDimOpHours({ ...dimOpHours, weekdays: { ...dimOpHours.weekdays, start: e.target.value } })} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-sm disabled:opacity-50" />
+                        <input type="time" disabled={dimOpHours.weekdays.closed || (dimOpHours.weekdays.start === '00:00' && dimOpHours.weekdays.end === '23:59')} value={dimOpHours.weekdays.start} onChange={e => setDimOpHours({ ...dimOpHours, weekdays: { ...dimOpHours.weekdays, start: e.target.value } })} className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-1 text-white text-sm disabled:opacity-50" />
                         <span className="text-slate-500 mt-1">às</span>
-                        <input type="time" disabled={dimOpHours.weekdays.closed || (dimOpHours.weekdays.start === '00:00' && dimOpHours.weekdays.end === '23:59')} value={dimOpHours.weekdays.end} onChange={e => setDimOpHours({ ...dimOpHours, weekdays: { ...dimOpHours.weekdays, end: e.target.value } })} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-sm disabled:opacity-50" />
+                        <input type="time" disabled={dimOpHours.weekdays.closed || (dimOpHours.weekdays.start === '00:00' && dimOpHours.weekdays.end === '23:59')} value={dimOpHours.weekdays.end} onChange={e => setDimOpHours({ ...dimOpHours, weekdays: { ...dimOpHours.weekdays, end: e.target.value } })} className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-1 text-white text-sm disabled:opacity-50" />
                       </div>
                     </div>
 
-                    <div className="p-3 bg-slate-700/30 rounded border border-slate-600/50">
+                    <div className="p-3 bg-slate-700/30 rounded border border-[rgba(99,102,241,0.1)]">
                       <div className="flex justify-between items-center text-sm text-slate-300 mb-2 font-semibold">
                         Sábados
                         <div className="flex items-center gap-3">
@@ -3796,24 +3803,24 @@ export default function Dashboard() {
                                 if (e.target.checked) setDimOpHours({ ...dimOpHours, saturdays: { start: '00:00', end: '23:59', closed: false } });
                                 else setDimOpHours({ ...dimOpHours, saturdays: { start: '09:00', end: '15:00', closed: false } });
                               }}
-                              className="rounded bg-slate-900 border-slate-600 text-blue-500 focus:ring-blue-500"
+                              className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-blue-500 focus:ring-blue-500"
                             />
                             24h
                           </label>
                           <label className="flex items-center gap-1 text-xs font-normal cursor-pointer hover:text-slate-200">
-                            <input type="checkbox" checked={dimOpHours.saturdays.closed} onChange={e => setDimOpHours({ ...dimOpHours, saturdays: { ...dimOpHours.saturdays, closed: e.target.checked } })} className="rounded bg-slate-900 border-slate-600" />
+                            <input type="checkbox" checked={dimOpHours.saturdays.closed} onChange={e => setDimOpHours({ ...dimOpHours, saturdays: { ...dimOpHours.saturdays, closed: e.target.checked } })} className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)]" />
                             Fechado
                           </label>
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <input type="time" disabled={dimOpHours.saturdays.closed || (dimOpHours.saturdays.start === '00:00' && dimOpHours.saturdays.end === '23:59')} value={dimOpHours.saturdays.start} onChange={e => setDimOpHours({ ...dimOpHours, saturdays: { ...dimOpHours.saturdays, start: e.target.value } })} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-sm disabled:opacity-50" />
+                        <input type="time" disabled={dimOpHours.saturdays.closed || (dimOpHours.saturdays.start === '00:00' && dimOpHours.saturdays.end === '23:59')} value={dimOpHours.saturdays.start} onChange={e => setDimOpHours({ ...dimOpHours, saturdays: { ...dimOpHours.saturdays, start: e.target.value } })} className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-1 text-white text-sm disabled:opacity-50" />
                         <span className="text-slate-500 mt-1">às</span>
-                        <input type="time" disabled={dimOpHours.saturdays.closed || (dimOpHours.saturdays.start === '00:00' && dimOpHours.saturdays.end === '23:59')} value={dimOpHours.saturdays.end} onChange={e => setDimOpHours({ ...dimOpHours, saturdays: { ...dimOpHours.saturdays, end: e.target.value } })} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-sm disabled:opacity-50" />
+                        <input type="time" disabled={dimOpHours.saturdays.closed || (dimOpHours.saturdays.start === '00:00' && dimOpHours.saturdays.end === '23:59')} value={dimOpHours.saturdays.end} onChange={e => setDimOpHours({ ...dimOpHours, saturdays: { ...dimOpHours.saturdays, end: e.target.value } })} className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-1 text-white text-sm disabled:opacity-50" />
                       </div>
                     </div>
 
-                    <div className="p-3 bg-slate-700/30 rounded border border-slate-600/50">
+                    <div className="p-3 bg-slate-700/30 rounded border border-[rgba(99,102,241,0.1)]">
                       <div className="flex justify-between items-center text-sm text-slate-300 mb-2 font-semibold">
                         Domingos
                         <div className="flex items-center gap-3">
@@ -3825,20 +3832,20 @@ export default function Dashboard() {
                                 if (e.target.checked) setDimOpHours({ ...dimOpHours, sundays: { start: '00:00', end: '23:59', closed: false } });
                                 else setDimOpHours({ ...dimOpHours, sundays: { start: '00:00', end: '23:59', closed: true } });
                               }}
-                              className="rounded bg-slate-900 border-slate-600 text-blue-500 focus:ring-blue-500"
+                              className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-blue-500 focus:ring-blue-500"
                             />
                             24h
                           </label>
                           <label className="flex items-center gap-1 text-xs font-normal cursor-pointer hover:text-slate-200">
-                            <input type="checkbox" checked={dimOpHours.sundays.closed} onChange={e => setDimOpHours({ ...dimOpHours, sundays: { ...dimOpHours.sundays, closed: e.target.checked } })} className="rounded bg-slate-900 border-slate-600" />
+                            <input type="checkbox" checked={dimOpHours.sundays.closed} onChange={e => setDimOpHours({ ...dimOpHours, sundays: { ...dimOpHours.sundays, closed: e.target.checked } })} className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)]" />
                             Fechado
                           </label>
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <input type="time" disabled={dimOpHours.sundays.closed || (dimOpHours.sundays.start === '00:00' && dimOpHours.sundays.end === '23:59')} value={dimOpHours.sundays.start} onChange={e => setDimOpHours({ ...dimOpHours, sundays: { ...dimOpHours.sundays, start: e.target.value } })} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-sm disabled:opacity-50" />
+                        <input type="time" disabled={dimOpHours.sundays.closed || (dimOpHours.sundays.start === '00:00' && dimOpHours.sundays.end === '23:59')} value={dimOpHours.sundays.start} onChange={e => setDimOpHours({ ...dimOpHours, sundays: { ...dimOpHours.sundays, start: e.target.value } })} className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-1 text-white text-sm disabled:opacity-50" />
                         <span className="text-slate-500 mt-1">às</span>
-                        <input type="time" disabled={dimOpHours.sundays.closed || (dimOpHours.sundays.start === '00:00' && dimOpHours.sundays.end === '23:59')} value={dimOpHours.sundays.end} onChange={e => setDimOpHours({ ...dimOpHours, sundays: { ...dimOpHours.sundays, end: e.target.value } })} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-sm disabled:opacity-50" />
+                        <input type="time" disabled={dimOpHours.sundays.closed || (dimOpHours.sundays.start === '00:00' && dimOpHours.sundays.end === '23:59')} value={dimOpHours.sundays.end} onChange={e => setDimOpHours({ ...dimOpHours, sundays: { ...dimOpHours.sundays, end: e.target.value } })} className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-1 text-white text-sm disabled:opacity-50" />
                       </div>
                     </div>
                   </div>
@@ -3884,7 +3891,7 @@ export default function Dashboard() {
                   </div>
 
                   {shiftSchedule && (
-                    <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 mb-6">
+                    <div className="glass p-6 mb-6">
                       <div className="flex justify-between items-center mb-6">
                         <h3 className="text-lg font-semibold text-emerald-400">Escala Simulada (Algoritmo Guloso)</h3>
                         <button
@@ -3915,19 +3922,19 @@ export default function Dashboard() {
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
+                        <div className="glass-subtle p-4">
                           <p className="text-slate-400 text-sm font-medium mb-1">Headcount Diário (Base)</p>
                           <h4 className="text-3xl font-bold text-white">{shiftSchedule.totalDailyHC} <span className="text-sm font-normal text-slate-500">pessoas/dia</span></h4>
                         </div>
-                        <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
+                        <div className="glass-subtle p-4">
                           <p className="text-slate-400 text-sm font-medium mb-1">Headcount Mensal Estimado (c/ Folgas)</p>
                           <h4 className="text-3xl font-bold text-blue-400">{shiftSchedule.totalMonthlyHC} <span className="text-sm font-normal text-slate-500">pessoas na folha</span></h4>
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto custom-scrollbar">
-                        <table className="w-full text-sm text-left text-slate-300">
-                          <thead className="text-xs text-slate-400 bg-slate-700/50">
+                      <div className="overflow-x-auto ">
+                        <table className="data-table">
+                          <thead className="">
                             <tr>
                               <th className="px-4 py-2 rounded-tl">Turno</th>
                               <th className="px-4 py-2">Horário de Entrada</th>
@@ -3936,7 +3943,7 @@ export default function Dashboard() {
                           </thead>
                           <tbody>
                             {shiftSchedule.schedules.map((s: any, idx: number) => (
-                              <tr key={idx} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                              <tr key={idx} className="border-b border-[rgba(99,102,241,0.08)] hover:bg-[var(--color-glass-hover)]">
                                 <td className="px-4 py-2 font-medium text-emerald-400">{s.shift.label}</td>
                                 <td className="px-4 py-2">{s.startTime}</td>
                                 <td className="px-4 py-2 text-white font-bold">{s.count}</td>
@@ -3954,7 +3961,7 @@ export default function Dashboard() {
                   )}
 
                   {coverageChartData.length > 0 && (
-                    <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+                    <div className="glass p-6">
                       <h3 className="text-lg font-semibold mb-6 text-purple-400">Cobertura de Escala vs PAs Necessárias</h3>
                       <div className="h-80">
                         <ResponsiveContainer width="100%" height="100%">
@@ -3980,7 +3987,7 @@ export default function Dashboard() {
                     </div>
                   )}
 
-                  <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+                  <div className="glass p-6">
                     <h3 className="text-lg font-semibold mb-6">Projeção Intra-diária: PAs x Ocupação</h3>
                     <div className="h-80">
                       <ResponsiveContainer width="100%" height="100%">
@@ -3999,51 +4006,51 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50 mb-6">
+                  <div className="glass p-6 mb-6">
                     <div className="flex justify-between items-center mb-4">
                       <div className="flex items-center gap-4">
                         <h3 className="text-lg font-semibold">Visão Mensal de Escalas</h3>
-                        <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer bg-slate-700/50 px-3 py-1.5 rounded border border-slate-600 hover:bg-slate-700 transition">
+                        <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer btn-ghost px-3 py-1.5">
                           <input
                             type="checkbox"
                             checked={dimShowConsolidated}
                             onChange={e => setDimShowConsolidated(e.target.checked)}
-                            className="rounded bg-slate-900 border-slate-600 text-blue-500 focus:ring-blue-500"
+                            className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-blue-500 focus:ring-blue-500"
                           />
                           Visão Consolidada
                         </label>
                       </div>
                       <button
                         onClick={exportMonthlyCSV}
-                        className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm transition"
+                        className="btn-ghost px-4 py-2 text-sm"
                       >
                         📥 Exportar CSV Mensal
                       </button>
                     </div>
-                    <div className="overflow-x-auto h-[400px] custom-scrollbar">
-                      <table className="w-full text-sm text-left text-slate-300">
+                    <div className="overflow-x-auto h-[400px] ">
+                      <table className="data-table">
                         <thead className="text-[11px] text-white bg-blue-900 sticky top-0 z-10 text-center font-bold">
                           <tr>
-                            <th className="px-2 py-2 border-r border-blue-800">DIA</th>
-                            <th className="px-2 py-2 border-r border-blue-800">TIPO</th>
-                            <th className="px-2 py-2 border-r border-blue-800">DMM</th>
-                            <th className="px-2 py-2 border-r border-blue-800">% DMM</th>
-                            <th className="px-2 py-2 border-r border-blue-800">VOLUME</th>
-                            <th className="px-2 py-2 border-r border-blue-800">TRÁFEGO</th>
-                            <th className="px-2 py-2 border-r border-blue-800">TMO</th>
-                            <th className="px-2 py-2 border-r border-blue-800">NEC B</th>
-                            <th className="px-2 py-2 border-r border-blue-800">DIM B</th>
-                            <th className="px-2 py-2 border-r border-blue-800">GAP B</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">DIA</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TIPO</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">DMM</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">% DMM</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">VOLUME</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TRÁFEGO</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TMO</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">NEC B</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">DIM B</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">GAP B</th>
                             {AVAILABLE_SHIFTS.filter(s => dimEnabledShifts.includes(s.type)).map(s => (
-                              <th key={s.type} className="px-2 py-2 border-r border-blue-800 text-yellow-300" title="Quadro Fixo Contratado">QUADRO {s.label.split(' ')[0]}</th>
+                              <th key={s.type} className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-yellow-300" title="Quadro Fixo Contratado">QUADRO {s.label.split(' ')[0]}</th>
                             ))}
-                            <th className="px-2 py-2 border-r border-blue-800">HE DIM</th>
-                            <th className="px-2 py-2 border-r border-blue-800 text-orange-300">NS</th>
-                            <th className="px-2 py-2 border-r border-blue-800 text-orange-300">NS C/ HE</th>
-                            <th className="px-2 py-2 border-r border-blue-800">PA LOG</th>
-                            <th className="px-2 py-2 border-r border-blue-800">PA LOG+HE</th>
-                            <th className="px-2 py-2 border-r border-blue-800">TX OCUP</th>
-                            <th className="px-2 py-2 border-r border-blue-800">INDISP</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">HE DIM</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-orange-300">NS</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-orange-300">NS C/ HE</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">PA LOG</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">PA LOG+HE</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TX OCUP</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">INDISP</th>
                             <th className="px-2 py-2">AD. NOT</th>
                           </tr>
                         </thead>
@@ -4086,35 +4093,35 @@ export default function Dashboard() {
                         </tbody>
                         <tfoot className="bg-slate-700/80 font-bold border-t-2 border-blue-500">
                           <tr>
-                            <td colSpan={4} className="px-2 py-2 text-right border-r border-slate-600">TOTAL / MÉDIA</td>
-                            <td className="px-2 py-2 border-r border-slate-600">{monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0)}</td>
-                            <td className="px-2 py-2 border-r border-slate-600 text-blue-400">{Math.round(monthlyShiftSchedules.reduce((sum, r) => sum + r.totalTraffic, 0)).toLocaleString('pt-BR')}</td>
-                            <td className="px-2 py-2 border-r border-slate-600">
+                            <td colSpan={4} className="px-2 py-2 text-right border-r border-[rgba(99,102,241,0.12)]">TOTAL / MÉDIA</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">{monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0)}</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-400">{Math.round(monthlyShiftSchedules.reduce((sum, r) => sum + r.totalTraffic, 0)).toLocaleString('pt-BR')}</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">
                               {monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0) > 0
                                 ? Math.round(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalVol * Number(r.tmoAvg)), 0) / monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0))
                                 : 0}
                             </td>
-                            <td className="px-2 py-2 border-r border-slate-600 text-slate-300">-</td>
-                            <td className="px-2 py-2 border-r border-slate-600 text-slate-300">-</td>
-                            <td className="px-2 py-2 border-r border-slate-600">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-slate-300">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-slate-300">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
                             {AVAILABLE_SHIFTS.filter(s => dimEnabledShifts.includes(s.type)).map(s => (
-                              <td key={s.type} className="px-2 py-2 border-r border-slate-600 text-blue-300">
+                              <td key={s.type} className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-300">
                                 {Math.max(0, ...monthlyShiftSchedules.map(r => r.fixedHiredHC[s.type] || 0))}
                               </td>
                             ))}
-                            <td className="px-2 py-2 border-r border-slate-600">0</td>
-                            <td className="px-2 py-2 border-r border-slate-600 text-yellow-300">
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">0</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-yellow-300">
                               {(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalVol * (r.finalSla || 0)), 0) / (monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0) || 1)).toFixed(1)}%
                             </td>
-                            <td className="px-2 py-2 border-r border-slate-600 text-yellow-300">
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-yellow-300">
                               {(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalVol * (r.finalSla || 0)), 0) / (monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0) || 1)).toFixed(1)}%
                             </td>
-                            <td className="px-2 py-2 border-r border-slate-600 text-blue-400">-</td>
-                            <td className="px-2 py-2 border-r border-slate-600 text-blue-400">-</td>
-                            <td className="px-2 py-2 border-r border-slate-600">
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-400">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-400">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">
                               {Math.round(monthlyShiftSchedules.reduce((sum, r) => sum + r.avgOccupancy, 0) / (monthlyShiftSchedules.length || 1))}%
                             </td>
-                            <td className="px-2 py-2 border-r border-slate-600">{dimShrinkage}%</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">{dimShrinkage}%</td>
                             <td className="px-2 py-2">0,0%</td>
                           </tr>
                         </tfoot>
@@ -4122,32 +4129,32 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+                  <div className="glass p-6">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="text-lg font-semibold">Detalhamento por Intervalo</h3>
                       <button
                         onClick={exportIntradayCSV}
-                        className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm transition"
+                        className="btn-ghost px-4 py-2 text-sm"
                       >
                         📥 Exportar CSV Intervalos
                       </button>
                     </div>
-                    <div className="overflow-x-auto h-[600px] custom-scrollbar">
-                      <table className="w-full text-sm text-left text-slate-300">
+                    <div className="overflow-x-auto h-[600px] ">
+                      <table className="data-table">
                         <thead className="text-[11px] text-white bg-blue-900 sticky top-0 z-10 text-center font-bold">
                           <tr>
-                            <th className="px-2 py-2 border-r border-blue-800">DIA</th>
-                            <th className="px-2 py-2 border-r border-blue-800">INTERVALO</th>
-                            <th className="px-2 py-2 border-r border-blue-800">VOLUME</th>
-                            <th className="px-2 py-2 border-r border-blue-800">TMO (s)</th>
-                            <th className="px-2 py-2 border-r border-blue-800">NEC B</th>
-                            <th className="px-2 py-2 border-r border-blue-800">TX OCUP</th>
-                            <th className="px-2 py-2 border-r border-blue-800 text-orange-300">NS (%)</th>
-                            <th className="px-2 py-2 border-r border-blue-800 text-emerald-300">PA DIM</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">DIA</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">INTERVALO</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">VOLUME</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TMO (s)</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">NEC B</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TX OCUP</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-orange-300">NS (%)</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-emerald-300">PA DIM</th>
                             {AVAILABLE_SHIFTS.map(s => (
-                              <th key={s.type} className="px-2 py-2 border-r border-blue-800 text-yellow-300">ENT {s.label.split(' ')[0]}</th>
+                              <th key={s.type} className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-yellow-300">ENT {s.label.split(' ')[0]}</th>
                             ))}
-                            <th className="py-2 px-2 text-right text-xs border-r border-blue-800">Abandono (%)</th>
+                            <th className="py-2 px-2 text-right text-xs border-r border-[rgba(99,102,241,0.15)]">Abandono (%)</th>
                             <th className="py-2 px-2 text-right text-xs">Erlang B (%)</th>
                           </tr>
                         </thead>
@@ -4242,7 +4249,7 @@ export default function Dashboard() {
                   ALOCAÇÃO AUTOMÁTICA 06:20 | 08:12
                   ====================================================== */}
             {dimSubTab === 'alocacao_automatica' && (
-              <div className="space-y-6">
+              <div className="space-y-5">
                 {/* Controles */}
                 <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-emerald-500/20">
                   <h3 className="text-lg font-semibold text-emerald-400 mb-4 flex items-center gap-2">
@@ -4250,7 +4257,7 @@ export default function Dashboard() {
                   </h3>
                   <div className="grid grid-cols-1 gap-4">
                     <div className="flex items-end">
-                      <div className="bg-slate-900/60 rounded p-3 text-xs text-slate-400 leading-relaxed">
+                      <div className="bg-[var(--color-bg-surface)]/60 rounded p-3 text-xs text-slate-400 leading-relaxed">
                         <p>📌 <strong className="text-slate-300">Janela de operação:</strong> usada do horário configurado no painel.</p>
                         <p>📌 <strong className="text-slate-300">NEC base:</strong> <code className="text-emerald-400">requiredAgents</code> do Erlang C (com shrinkage).</p>
                       </div>
@@ -4259,7 +4266,7 @@ export default function Dashboard() {
                 </div>
 
                 {!shiftAllocation612_812 ? (
-                  <div className="bg-slate-800 rounded-xl p-10 text-center text-slate-400 border border-slate-700/50">
+                  <div className="bg-slate-800 rounded-xl p-10 text-center text-slate-400 border border-[rgba(99,102,241,0.08)]">
                     {erlangData.length === 0
                       ? '⚠️ Carregue o forecast e acesse a aba Dimensionamento para calcular.'
                       : '⚠️ A operação está fechada no dia selecionado.'}
@@ -4293,7 +4300,7 @@ export default function Dashboard() {
                     </div>
 
                     {/* Gráfico NEC vs Cobertura */}
-                    <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+                    <div className="glass p-6">
                       <h3 className="text-base font-semibold text-slate-300 mb-4">📈 NEC Bruta vs Cobertura por Intervalo</h3>
                       <ResponsiveContainer width="100%" height={240}>
                         <ComposedChart data={shiftAllocation612_812.necPerInterval.map((nec, i) => ({
@@ -4315,12 +4322,12 @@ export default function Dashboard() {
                     </div>
 
                     {/* Tabela de Escala */}
-                    <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+                    <div className="glass p-6">
                       <h3 className="text-base font-semibold text-slate-300 mb-4">📋 Escala Gerada pelo Algoritmo Guloso</h3>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse text-sm">
                           <thead>
-                            <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase">
+                            <tr className="border-b border-[rgba(99,102,241,0.12)] text-slate-400 text-xs uppercase">
                               <th className="py-2 px-4">Entrada</th>
                               <th className="py-2 px-4">Saída</th>
                               <th className="py-2 px-4">Tipo</th>
@@ -4331,7 +4338,7 @@ export default function Dashboard() {
                           </thead>
                           <tbody>
                             {shiftAllocation612_812.allocations.map((alloc, idx) => (
-                              <tr key={idx} className={`border-b border-slate-700/40 hover:bg-slate-700/20 transition-colors ${alloc.shiftType === '08:12' ? 'bg-purple-900/10' : 'bg-blue-900/10'}`}>
+                              <tr key={idx} className={`border-b border-[rgba(99,102,241,0.12)]/40 hover:bg-slate-700/20 transition-colors ${alloc.shiftType === '08:12' ? 'bg-purple-900/10' : 'bg-blue-900/10'}`}>
                                 <td className="py-3 px-4 font-mono font-semibold text-white">{alloc.startTime}</td>
                                 <td className="py-3 px-4 font-mono text-slate-300">{alloc.endTime}</td>
                                 <td className="py-3 px-4">
@@ -4347,7 +4354,7 @@ export default function Dashboard() {
                               </tr>
                             ))}
                           </tbody>
-                          <tfoot className="border-t-2 border-slate-600">
+                          <tfoot className="border-t-2 border-[rgba(99,102,241,0.12)]">
                             <tr className="font-bold text-sm">
                               <td className="py-3 px-4 text-slate-300" colSpan={4}>TOTAL</td>
                               <td className="py-3 px-4 text-center text-emerald-400">{shiftAllocation612_812.totalHC}</td>
@@ -4373,8 +4380,8 @@ export default function Dashboard() {
             'Pausas': shrinkBreaks, 'Reuniões': shrinkMeetings, 'Absentismo': shrinkAbsenteeism, 'Outros': shrinkOther
           }), [shrinkBaseAgents, shrinkVacation, shrinkSickLeave, shrinkTraining, shrinkBreaks, shrinkMeetings, shrinkAbsenteeism, shrinkOther]);
           return (
-            <div className="space-y-6">
-              <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+            <div className="space-y-5">
+              <div className="glass p-6">
                 <h2 className="text-xl font-bold text-rose-400 flex items-center gap-2 mb-6">
                   <Users className="w-5 h-5" /> Calculadora de Shrinkage
                 </h2>
@@ -4384,7 +4391,7 @@ export default function Dashboard() {
                   <div className="col-span-full">
                     <label className="block text-sm font-medium text-slate-300 mb-2">Agentes Necessários (antes do shrinkage)</label>
                     <input type="number" value={shrinkBaseAgents} onChange={e => setShrinkBaseAgents(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white text-lg font-bold" />
+                      className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded-lg px-4 py-2.5 text-white text-lg font-bold" />
                   </div>
                   {[
                     { label: 'Férias (%)', value: shrinkVacation, setter: setShrinkVacation, desc: 'Licença remunerada anual' },
@@ -4398,7 +4405,7 @@ export default function Dashboard() {
                     <div key={item.label}>
                       <label className="block text-sm font-medium text-slate-300 mb-1">{item.label}</label>
                       <input type="number" step="0.5" min="0" max="50" value={item.value} onChange={e => item.setter(parseFloat(e.target.value) || 0)}
-                        className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white" />
+                        className="input-field" />
                       <p className="text-xs text-slate-500 mt-1">{item.desc}</p>
                     </div>
                   ))}
@@ -4406,15 +4413,15 @@ export default function Dashboard() {
 
                 {/* Shrinkage Results */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700 text-center">
+                  <div className="glass-subtle p-4 text-center">
                     <p className="text-sm text-slate-400">Shrinkage Total</p>
                     <p className="text-3xl font-bold text-rose-400">{shrinkResult.totalShrinkagePercent.toFixed(1)}%</p>
                   </div>
-                  <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700 text-center">
+                  <div className="glass-subtle p-4 text-center">
                     <p className="text-sm text-slate-400">Agentes Necessários (com shrinkage)</p>
                     <p className="text-3xl font-bold text-amber-400">{shrinkResult.requiredWithShrinkage}</p>
                   </div>
-                  <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700 text-center">
+                  <div className="glass-subtle p-4 text-center">
                     <p className="text-sm text-slate-400">Eficiência do Tempo Pago</p>
                     <p className="text-3xl font-bold text-emerald-400">{(100 - shrinkResult.efficiencyLoss).toFixed(1)}%</p>
                   </div>
@@ -4422,9 +4429,9 @@ export default function Dashboard() {
 
                 {/* Breakdown Table */}
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="data-table">
                     <thead>
-                      <tr className="border-b border-slate-700">
+                      <tr className="border-b border-[rgba(99,102,241,0.12)]">
                         <th className="text-left py-3 px-4 text-slate-400">Componente</th>
                         <th className="text-center py-3 px-4 text-slate-400">%</th>
                         <th className="text-center py-3 px-4 text-slate-400">Agentes Ausentes</th>
@@ -4432,14 +4439,14 @@ export default function Dashboard() {
                     </thead>
                     <tbody>
                       {shrinkResult.components.map((c, i) => (
-                        <tr key={i} className="border-b border-slate-800 hover:bg-slate-800/50">
+                        <tr key={i} className="border-b border-[rgba(99,102,241,0.06)] hover:bg-[var(--color-bg-surface)]">
                           <td className="py-3 px-4 text-white">{c.name}</td>
                           <td className="py-3 px-4 text-center text-rose-300 font-medium">{c.percent.toFixed(1)}%</td>
                           <td className="py-3 px-4 text-center text-amber-300 font-medium">{c.agentsAbsent}</td>
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="border-t-2 border-slate-600 font-bold">
+                    <tfoot className="border-t-2 border-[rgba(99,102,241,0.12)] font-bold">
                       <tr>
                         <td className="py-3 px-4 text-white">TOTAL</td>
                         <td className="py-3 px-4 text-center text-rose-400">{shrinkResult.totalShrinkagePercent.toFixed(1)}%</td>
@@ -4452,7 +4459,7 @@ export default function Dashboard() {
                 <button onClick={() => exportToCSV(shrinkResult.components.map(c => ({
                   Componente: c.name, Percentual: c.percent, 'Agentes Ausentes': c.agentsAbsent
                 })), `shrinkage_${shrinkBaseAgents}agentes.csv`)}
-                  className="mt-4 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                  className="mt-4 btn-ghost px-4 py-2 text-sm">
                   Exportar CSV
                 </button>
               </div>
@@ -4462,8 +4469,8 @@ export default function Dashboard() {
 
         {/* ==================== WHAT-IF TAB ==================== */}
         {activeTab === 'whatif' && (
-          <div className="space-y-6">
-            <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+          <div key="whatif" className="space-y-5 page-enter">
+            <div className="glass p-6">
               <h2 className="text-xl font-bold text-cyan-400 flex items-center gap-2 mb-6">
                 <TrendingUp className="w-5 h-5" /> Análise de Cenários (What-If)
               </h2>
@@ -4471,34 +4478,34 @@ export default function Dashboard() {
 
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Volume Base (por intervalo)</label>
+                  <label className="label-text">Volume Base (por intervalo)</label>
                   <input type="number" value={whatifBaseVolume} onChange={e => setWhatifBaseVolume(parseInt(e.target.value) || 0)}
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                    className="input-field text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">TMO (seg)</label>
+                  <label className="label-text">TMO (seg)</label>
                   <input type="number" value={whatifTmo} onChange={e => setWhatifTmo(parseInt(e.target.value) || 1)}
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                    className="input-field text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Intervalo (seg)</label>
+                  <label className="label-text">Intervalo (seg)</label>
                   <input type="number" value={whatifIntervalSec} onChange={e => setWhatifIntervalSec(parseInt(e.target.value) || 1)}
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                    className="input-field text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">SLA Alvo (%)</label>
+                  <label className="label-text">SLA Alvo (%)</label>
                   <input type="number" value={whatifTargetSla} onChange={e => setWhatifTargetSla(parseFloat(e.target.value) || 1)}
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                    className="input-field text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Tempo SLA (seg)</label>
+                  <label className="label-text">Tempo SLA (seg)</label>
                   <input type="number" value={whatifSlaTime} onChange={e => setWhatifSlaTime(parseInt(e.target.value) || 1)}
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                    className="input-field text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Shrinkage (%)</label>
+                  <label className="label-text">Shrinkage (%)</label>
                   <input type="number" step="0.01" value={whatifShrinkage} onChange={e => setWhatifShrinkage(parseFloat(e.target.value) || 0)}
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                    className="input-field text-sm" />
                 </div>
               </div>
 
@@ -4506,28 +4513,29 @@ export default function Dashboard() {
                 const results = calculateScenarioImpact(
                   whatifBaseVolume, whatifTmo, whatifIntervalSec,
                   whatifTargetSla, whatifSlaTime, whatifShrinkage / 100,
+                  costPerAgent,
                   [
-                    { name: 'Pico Extremo (+30%)', volumeDeltaPct: 30, tmoDeltaPct: 0 },
-                    { name: 'Pico Moderado (+20%)', volumeDeltaPct: 20, tmoDeltaPct: 0 },
-                    { name: 'Operação Normal', volumeDeltaPct: 0, tmoDeltaPct: 0 },
-                    { name: 'Baixa Demanda (-20%)', volumeDeltaPct: -20, tmoDeltaPct: 0 },
+                    { name: 'Pico Extremo (+30%)', volumeDeltaPct: 30 },
+                    { name: 'Pico Moderado (+20%)', volumeDeltaPct: 20 },
+                    { name: 'Operação Normal', volumeDeltaPct: 0 },
+                    { name: 'Baixa Demanda (-20%)', volumeDeltaPct: -20 },
                     { name: 'Crise (+30% vol, +15% TMO)', volumeDeltaPct: 30, tmoDeltaPct: 15 },
-                    { name: 'TMO Alto (+25% TMO)', volumeDeltaPct: 0, tmoDeltaPct: 25 },
+                    { name: 'TMO Alto (+25% TMO)', tmoDeltaPct: 25 },
                     { name: 'Black Friday (+50% vol)', volumeDeltaPct: 50, tmoDeltaPct: -10 },
                   ]
                 );
                 setWhatifResults(results);
               }}
-                className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-colors mb-6">
+                className="btn-primary px-6 py-3 mb-6" style={{background: 'linear-gradient(135deg, #06b6d4, #0891b2)'}}>
                 Simular Cenários
               </button>
 
               {whatifResults.length > 0 && (
                 <>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="data-table">
                       <thead>
-                        <tr className="border-b border-slate-700">
+                        <tr className="border-b border-[rgba(99,102,241,0.12)]">
                           <th className="text-left py-3 px-3 text-slate-400">Cenário</th>
                           <th className="text-center py-3 px-3 text-slate-400">Volume</th>
                           <th className="text-center py-3 px-3 text-slate-400">TMO</th>
@@ -4543,7 +4551,7 @@ export default function Dashboard() {
                       </thead>
                       <tbody>
                         {whatifResults.map((r, i) => (
-                          <tr key={i} className={`border-b border-slate-800 hover:bg-slate-800/50 ${r.riskLevel === 'Crítico' ? 'bg-red-900/20' : r.riskLevel === 'Alto' ? 'bg-amber-900/20' : ''}`}>
+                          <tr key={i} className={`border-b border-[rgba(99,102,241,0.06)] hover:bg-[var(--color-bg-surface)] ${r.riskLevel === 'Crítico' ? 'bg-[rgba(251,113,133,0.06)]' : r.riskLevel === 'Alto' ? 'bg-[rgba(251,191,36,0.06)]' : ''}`}>
                             <td className="py-3 px-3 text-white font-medium">{r.name}</td>
                             <td className="py-3 px-3 text-center text-slate-300">{r.volume.toLocaleString()}</td>
                             <td className="py-3 px-3 text-center text-slate-300">{r.tmo}s</td>
@@ -4558,10 +4566,10 @@ export default function Dashboard() {
                             </td>
                             <td className="py-3 px-3 text-center">
                               <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                r.riskLevel === 'Baixo' ? 'bg-emerald-900/50 text-emerald-400' :
-                                r.riskLevel === 'Médio' ? 'bg-amber-900/50 text-amber-400' :
-                                r.riskLevel === 'Alto' ? 'bg-orange-900/50 text-orange-400' :
-                                'bg-red-900/50 text-red-400'
+                                r.riskLevel === 'Baixo' ? 'bg-[rgba(52,211,153,0.12)] text-[var(--color-accent-emerald)]' :
+                                r.riskLevel === 'Médio' ? 'bg-[rgba(251,191,36,0.12)] text-[var(--color-accent-amber)]' :
+                                r.riskLevel === 'Alto' ? 'bg-[rgba(251,146,60,0.12)] text-[var(--color-accent-orange)]' :
+                                'bg-[rgba(251,113,133,0.12)] text-[var(--color-accent-rose)]'
                               }`}>{r.riskLevel}</span>
                             </td>
                           </tr>
@@ -4571,14 +4579,14 @@ export default function Dashboard() {
                   </div>
 
                   {/* What-If Visualization */}
-                  <div className="mt-6 bg-slate-900/50 rounded-xl p-6">
+                  <div className="mt-6 bg-[var(--color-bg-surface)] rounded-xl p-6">
                     <h3 className="text-lg font-bold text-cyan-400 mb-4">Comparativo Visual</h3>
                     <ResponsiveContainer width="100%" height={300}>
                       <BarChart data={whatifResults.map(r => ({ name: r.name, agentes: r.requiredAgents, sla: r.sla, ocupacao: r.occupancy }))}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                         <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 10 }} angle={-30} textAnchor="end" height={80} />
                         <YAxis tick={{ fill: '#94a3b8' }} />
-                        <RechartsTooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} />
+                        <RechartsTooltip contentStyle={{ backgroundColor: 'var(--color-bg-elevated)', border: '1px solid var(--color-border-subtle)', borderRadius: '10px', color: 'var(--color-text-primary)' }} />
                         <Legend />
                         <Bar dataKey="agentes" fill="#818cf8" name="PA Necessários" />
                         <Bar dataKey="sla" fill="#34d399" name="SLA %" />
@@ -4593,7 +4601,7 @@ export default function Dashboard() {
                     'SLA (%)': r.sla, 'Ocupação (%)': r.occupancy, 'ASA (s)': r.asa,
                     'Delta Custo': r.costDelta, Risco: r.riskLevel
                   })), 'whatif_analysis.csv')}
-                    className="mt-4 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    className="mt-4 btn-ghost px-4 py-2 text-sm">
                     Exportar Análise CSV
                   </button>
                 </>
@@ -4604,33 +4612,33 @@ export default function Dashboard() {
 
         {/* ==================== ROTATION TAB ==================== */}
         {activeTab === 'rotacao' && (
-          <div className="space-y-6">
-            <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+          <div key="rotacao" className="space-y-5 page-enter">
+            <div className="glass p-6">
               <h2 className="text-xl font-bold text-violet-400 flex items-center gap-2 mb-6">
                 <CalendarDays className="w-5 h-5" /> Escala de Rotação Mensal
               </h2>
               <p className="text-slate-400 mb-6">Gere uma escala de rotação mensal com distribuição automática de turnos, folgas rotativas e respeito a feriados nacionais. Cada operador recebe 1 dia de folga por semana.</p>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 stagger-in">
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Ano</label>
+                  <label className="label-text">Ano</label>
                   <input type="number" value={rotYear} onChange={e => setRotYear(parseInt(e.target.value) || 2025)}
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white" />
+                    className="input-field" />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Mês</label>
+                  <label className="label-text">Mês</label>
                   <select value={rotMonth} onChange={e => setRotMonth(parseInt(e.target.value))}
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white">
+                    className="input-field">
                     {Array.from({length: 12}, (_, i) => <option key={i+1} value={i+1}>{new Date(2025, i).toLocaleString('pt-BR', {month: 'long'})}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Headcount Total</label>
+                  <label className="label-text">Headcount Total</label>
                   <input type="number" value={rotHC} onChange={e => setRotHC(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white" />
+                    className="input-field" />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Turnos</label>
+                  <label className="label-text">Turnos</label>
                   <div className="flex flex-wrap gap-1">
                     {AVAILABLE_SHIFTS.filter(s => s.recommended || ['12x36', '04:00'].includes(s.type)).map(s => (
                       <button key={s.type} onClick={() => setRotShiftTypes(prev =>
@@ -4650,27 +4658,27 @@ export default function Dashboard() {
                 const cal = generateRotationCalendar(rotYear, rotMonth, rotHC, rotShiftTypes);
                 setRotCalendar(cal);
               }}
-                className="bg-violet-600 hover:bg-violet-500 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-colors mb-6">
+                className="btn-primary px-6 py-3 mb-6" style={{background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)'}}>
                 Gerar Escala de Rotação
               </button>
 
               {rotCalendar && (
                 <>
                   {/* Summary Cards */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                    <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700 text-center">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 stagger-in">
+                    <div className="glass-subtle p-4 text-center">
                       <p className="text-sm text-slate-400">HC Médio/Dia</p>
                       <p className="text-2xl font-bold text-violet-400">{rotCalendar.summary.avgDailyHC}</p>
                     </div>
-                    <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700 text-center">
+                    <div className="glass-subtle p-4 text-center">
                       <p className="text-sm text-slate-400">HC Pico</p>
                       <p className="text-2xl font-bold text-amber-400">{rotCalendar.summary.peakDayHC}</p>
                     </div>
-                    <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700 text-center">
+                    <div className="glass-subtle p-4 text-center">
                       <p className="text-sm text-slate-400">Dias Úteis</p>
                       <p className="text-2xl font-bold text-emerald-400">{rotCalendar.summary.workingDays}</p>
                     </div>
-                    <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700 text-center">
+                    <div className="glass-subtle p-4 text-center">
                       <p className="text-sm text-slate-400">Feriados</p>
                       <p className="text-2xl font-bold text-rose-400">{rotCalendar.summary.holidays}</p>
                     </div>
@@ -4683,7 +4691,7 @@ export default function Dashboard() {
                       {Object.entries(rotCalendar.summary.shiftDistribution).map(([type, count]) => {
                         const shift = AVAILABLE_SHIFTS.find(s => s.type === type);
                         return (
-                          <div key={type} className="bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-2">
+                          <div key={type} className="bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded-lg px-4 py-2">
                             <p className="text-xs text-slate-400">{shift?.label || type}</p>
                             <p className="text-lg font-bold text-violet-300">{count as number}</p>
                           </div>
@@ -4694,9 +4702,9 @@ export default function Dashboard() {
 
                   {/* Calendar Grid */}
                   <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
+                    <table className="data-table" style={{fontSize: '0.75rem'}}>
                       <thead>
-                        <tr className="border-b border-slate-700">
+                        <tr className="border-b border-[rgba(99,102,241,0.12)]">
                           <th className="text-left py-2 px-2 text-slate-400">Data</th>
                           <th className="text-left py-2 px-2 text-slate-400">Dia</th>
                           <th className="text-center py-2 px-2 text-slate-400">Status</th>
@@ -4707,7 +4715,7 @@ export default function Dashboard() {
                       </thead>
                       <tbody>
                         {rotCalendar.days.map((day, i) => (
-                          <tr key={i} className={`border-b border-slate-800 ${day.isHoliday ? 'bg-red-900/10' : day.isWeekend ? 'bg-slate-900/30' : ''}`}>
+                          <tr key={i} className={`border-b border-[rgba(99,102,241,0.06)] ${day.isHoliday ? 'bg-[rgba(251,113,133,0.04)]' : day.isWeekend ? 'bg-[rgba(15,21,37,0.3)]' : ''}`}>
                             <td className="py-2 px-2 text-white font-medium">{day.date}</td>
                             <td className="py-2 px-2 text-slate-400">{day.dayName}</td>
                             <td className="py-2 px-2 text-center">
@@ -4717,7 +4725,7 @@ export default function Dashboard() {
                             </td>
                             <td className="py-2 px-2 text-center">
                               {day.shifts.length > 0 ? day.shifts.map((s, j) => (
-                                <span key={j} className="inline-block bg-violet-900/50 text-violet-300 px-1.5 py-0.5 rounded mr-1 mb-0.5">
+                                <span key={j} className="inline-block bg-[rgba(167,139,250,0.15)] text-[var(--color-accent-violet)] px-1.5 py-0.5 rounded mr-1 mb-0.5">
                                   {s.shiftType}x{s.count}
                                 </span>
                               )) : <span className="text-slate-600">-</span>}
@@ -4735,7 +4743,7 @@ export default function Dashboard() {
                     'HC Total': d.totalAgents, Turnos: d.shifts.map(s => `${s.shiftType}x${s.count}`).join(', '),
                     Observação: d.notes
                   })), `rotacao_${rotYear}_${String(rotMonth).padStart(2,'0')}.csv`)}
-                    className="mt-4 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    className="mt-4 btn-ghost px-4 py-2 text-sm">
                     Exportar Escala CSV
                   </button>
                 </>
@@ -4749,7 +4757,7 @@ export default function Dashboard() {
 
   {
     forecastData.length === 0 && !loading && (
-      <div className="text-center py-20 text-slate-500">
+      <div className="text-center py-20 text-[var(--color-text-muted)]">
         <p>Faça upload de um histórico CSV para gerar os primeiros forecasts.</p>
       </div>
     )
@@ -4757,11 +4765,11 @@ export default function Dashboard() {
 
   {
     isOptModalOpen && (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-        <div className="bg-slate-800 rounded-xl p-6 shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-amber-500/30">
+      <div className="modal-overlay">
+        <div className="bg-slate-800 rounded-xl p-6 shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-[rgba(251,191,36,0.2)]">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">✨ Otimização Inteligente de Escalas</h2>
-            <button onClick={() => setIsOptModalOpen(false)} className="text-slate-400 hover:text-white text-2xl">&times;</button>
+            <button onClick={() => setIsOptModalOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--color-glass-hover)] transition-colors text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-xl">&times;</button>
           </div>
 
           <p className="text-slate-300 mb-6">
@@ -4771,7 +4779,7 @@ export default function Dashboard() {
 
           <div className="space-y-4">
             {optResults.slice(0, 3).map((res, idx) => (
-              <div key={idx} className={`p-4 rounded-lg border ${idx === 0 ? 'bg-amber-900/20 border-amber-500/50' : 'bg-slate-900/50 border-slate-700'}`}>
+              <div key={idx} className={`p-4 rounded-lg border ${idx === 0 ? 'bg-[rgba(251,191,36,0.06)] border-amber-500/50' : 'bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)]'}`}>
                 <div className="flex justify-between items-start">
                   <div>
                     <h3 className="font-bold text-lg text-white flex items-center gap-2">
@@ -4793,7 +4801,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-slate-700/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="mt-4 pt-4 border-t border-[rgba(99,102,241,0.08)] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div className="text-sm text-slate-400">
                     <strong>Distribuição Sugerida:</strong>{' '}
                     {Object.entries(res.hcPerShiftType).map(([type, count]) => (
@@ -4809,7 +4817,7 @@ export default function Dashboard() {
                         setDimEnabledShifts(res.combo);
                         setIsOptModalOpen(false);
                       }}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded font-semibold transition text-sm flex-shrink-0"
+                      className="btn-primary px-4 py-2 text-sm flex-shrink-0" style={{background: 'linear-gradient(135deg, #10b981, #059669)'}}
                     >
                       Aplicar esta escala
                     </button>

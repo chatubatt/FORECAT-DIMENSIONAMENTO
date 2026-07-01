@@ -52,7 +52,7 @@ export function estimateAbandonRate(
   traffic: number,
   tmo: number,
   patienceTime: number = 60, // Average patience time in seconds (default 60s)
-  // shrinkage: number = 0
+  _shrinkage?: number
 ): {
   abandonRate: number;
   probWait: number;
@@ -167,7 +167,7 @@ export function evaluateErlangConfig(
     asa = (probWait * tmo) / (agents - traffic);
     occupancy = traffic / agents;
     avgWaitTime = asa;
-    const abandon = estimateAbandonRate(agents, traffic, tmo, patienceTime);
+    const abandon = estimateAbandonRate(agents, traffic, tmo, patienceTime, shrinkage);
     abandonRate = abandon.abandonRate;
     avgWaitTime = abandon.avgWaitTime;
   } else {
@@ -420,7 +420,7 @@ export function calculateSLASensitivity(
       shrinkage: shrinkage / 100
     };
     const result = findMinAgents(inputs);
-    const abandon = estimateAbandonRate(result.agents, result.traffic, tmo, 60);
+    const abandon = estimateAbandonRate(result.agents, result.traffic, tmo, 60, shrinkage / 100);
     return {
       volumeChangePct: pct,
       volume: vol,
@@ -559,7 +559,8 @@ export function calculateErlangA(
   intervalSeconds: number,
   targetSlaPercent: number,
   targetSlaTime: number,
-  patienceTime: number = 60
+  patienceTime: number = 60,
+  _shrinkage?: number
 ): ErlangAResult {
   if (volume <= 0 || tmo <= 0) {
     return {
@@ -686,8 +687,8 @@ export interface ScenarioInput {
  * @param targetSlaPercent - Meta de SLA (0-1)
  * @param targetSlaTime - Tempo alvo de SLA (segundos)
  * @param shrinkage - Fator de shrinkage (0-1)
- * @param scenarios - Lista de cenários para comparar
  * @param costPerAgentMonth - Custo mensal por agente (padrão 5000)
+ * @param scenarios - Lista de cenários para comparar
  */
 export function calculateScenarioImpact(
   baseVolume: number,
@@ -696,8 +697,8 @@ export function calculateScenarioImpact(
   targetSlaPercent: number,
   targetSlaTime: number,
   shrinkage: number,
-  scenarios: ScenarioInput[],
-  costPerAgentMonth: number = 5000
+  costPerAgentMonth: number = 5000,
+  scenarios: ScenarioInput[]
 ): ScenarioResult[] {
   // Calcula o cenário base como referência de custo
   const baseInputs: ErlangInputs = {
@@ -858,6 +859,7 @@ export function calculateMultiQueue(
 
   // Tráfego excedente ponderado (tráfego total * peso / peso_total)
   // Agentes no modelo otimizado: cada fila recebe proporcional ao seu peso
+  queues.reduce((sum, q) => sum + (q.volume / intervalSeconds) * q.tmo, 0);
 
   // Agentes base para tráfego total
   const totalInputs: ErlangInputs = {
