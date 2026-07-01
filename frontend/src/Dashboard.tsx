@@ -163,7 +163,8 @@ const getWorkdays = (year: number, month: number) => {
 
 export const defaultShrinkage = { abs: 0, nr17: 8.63, treinamento: 0, turnover: 0, outros: 0 };
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const rawApiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API_URL = rawApiUrl.replace(/\/+$/, '');
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
