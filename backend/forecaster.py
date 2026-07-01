@@ -1016,12 +1016,14 @@ class CallCenterForecaster:
     def _blend_forecast_with_recent(self, ml_volume_month, n_business_days):
         """Blenda a previsão do ML com a média dos últimos meses.
 
-        A lógica:
-        1. Se o ML está dentro de ±15% da média recente → usa o ML (confia no modelo)
-        2. Se o ML está acima de +15% → blend com média recente (60% ML + 40% média recente)
-        3. Se o ML está acima de +30% → blend agressivo (40% ML + 60% média recente)
-        4. Se o ML está abaixo de -15% → blend com média recente (60% ML + 40% média recente)
-        5. Sempre aplica a tendência detectada sobre a base recente
+        Estratégia 2.0 — ancorada em volume/dia útil (Vol/DU):
+        - Compara o Vol/DU do ML contra o Vol/DU recente + tendência
+        - Se o ML está dentro de ±10% por DU → confia no ML (90/10)
+        - Se o ML está 10-25% acima → blend moderado (50/50)
+        - Se o ML está 25-50% acima → blend forte (25/75)
+        - Se o ML está >50% acima → quase ignora o ML (10/90)
+        - Mesma lógica simétrica para valores abaixo
+        - Caps finais: blended não pode ultrapassar ±8% do max/min recente por DU
 
         Args:
             ml_volume_month: Volume total previsto pelo ML para o mês
@@ -1036,76 +1038,76 @@ class CallCenterForecaster:
         trend_direction = trend['trend_direction']
         avg_per_bd_recent = trend['avg_per_bd']
 
-        if avg_recent <= 0:
+        if avg_recent <= 0 or n_business_days <= 0:
             return {
                 'blended_volume': ml_volume_month,
-                'ml_volume': ml_volume_month,
+                'ml_volume': int(ml_volume_month),
                 'trend_info': trend,
-                'adjustment_reason': 'dados insuficientes'
+                'adjustment_reason': 'dados insuficientes',
+                'deviation_pct': 0
             }
 
-        # Calcular base ajustada pela tendência (projetar 1 mês à frente)
-        # Se a tendência é de queda de -5%/mês, a base ajustada = avg_recent * (1 + (-0.05))
-        trend_adjusted_base = avg_recent * (1 + trend_pct / 100)
+        # =====================================================================
+        # Ancorar em volume por dia útil (Vol/DU) — métrica mais estável
+        # =====================================================================
+        ml_per_bd = ml_volume_month / n_business_days
+        # Projetar Vol/DU com tendência para o próximo mês
+        expected_per_bd = avg_per_bd_recent * (1 + trend_pct / 100)
 
-        # Calcular o desvio do ML em relação à base ajustada
-        if trend_adjusted_base > 0:
-            deviation_pct = ((ml_volume_month - trend_adjusted_base) / trend_adjusted_base) * 100
+        # Desvio do ML em relação ao esperado por DU
+        if expected_per_bd > 0:
+            bd_deviation_pct = ((ml_per_bd - expected_per_bd) / expected_per_bd) * 100
         else:
-            deviation_pct = 0
+            bd_deviation_pct = 0
 
+        # =====================================================================
+        # Blend progressivo baseado no desvio por DU
+        # =====================================================================
         reason = ''
-        blended = ml_volume_month
+        blended = ml_volume_month  # default
 
-        if abs(deviation_pct) <= 15:
-            # ML está razoável → confiar no ML mas aplicar leve ajuste de tendência
-            blended = ml_volume_month * 0.85 + trend_adjusted_base * 0.15
-            reason = f'ML dentro do range (±15%). Leve blend 85/15 com tendência.'
-        elif deviation_pct > 15 and deviation_pct <= 30:
-            # ML está otimista demais → blend moderado
-            alpha = 0.60
-            blended = ml_volume_month * alpha + trend_adjusted_base * (1 - alpha)
-            reason = f'ML {deviation_pct:+.1f}% acima da tendência. Blend 60/40 para reduzir overshoot.'
-        elif deviation_pct > 30:
-            # ML está MUITO otimista → blend agressivo
-            alpha = 0.40
-            blended = ml_volume_month * alpha + trend_adjusted_base * (1 - alpha)
-            reason = f'ML {deviation_pct:+.1f}% acima da tendência. Blend agressivo 40/60 para corrigir overshoot.'
-        elif deviation_pct < -15 and deviation_pct >= -30:
-            # ML está pessimista demais → blend moderado
-            alpha = 0.60
-            blended = ml_volume_month * alpha + trend_adjusted_base * (1 - alpha)
-            reason = f'ML {deviation_pct:+.1f}% abaixo da tendência. Blend 60/40 para ajustar.'
-        elif deviation_pct < -30:
-            # ML está MUITO pessimista → blend agressivo
-            alpha = 0.40
-            blended = ml_volume_month * alpha + trend_adjusted_base * (1 - alpha)
-            reason = f'ML {deviation_pct:+.1f}% abaixo da tendência. Blend agressivo 40/60 para ajustar.'
+        abs_dev = abs(bd_deviation_pct)
+        sign = 'acima' if bd_deviation_pct > 0 else 'abaixo'
 
-        # Segurança: nunca permitir que blended fique mais de 10% abaixo do mínimo recente
-        # nem mais de 20% acima do máximo recente (entre os últimos 6 meses)
+        if abs_dev <= 10:
+            # ML muito próximo → confiar no ML com leve ancoragem
+            alpha = 0.90
+            blended_per_bd = ml_per_bd * alpha + expected_per_bd * (1 - alpha)
+            reason = f'ML dentro de ±10% por DU. Leve blend {int(alpha*100)}/{int((1-alpha)*100)}.'
+        elif abs_dev <= 20:
+            # ML moderadamente fora → blend equilibrado
+            alpha = 0.40
+            blended_per_bd = ml_per_bd * alpha + expected_per_bd * (1 - alpha)
+            reason = f'ML {bd_deviation_pct:+.1f}% {sign} por DU. Blend {int(alpha*100)}/{int((1-alpha)*100)}.'
+        else:
+            # ML significativamente fora → ancorar no histórico, signal mínimo do ML
+            # Usa apenas 5% do excesso do ML como signal direcional
+            ml_excess = ml_per_bd - expected_per_bd
+            blended_per_bd = expected_per_bd + ml_excess * 0.05
+            reason = f'ML {bd_deviation_pct:+.1f}% {sign} por DU. Ancorado no histórico + 5% signal ML.'
+
+        blended = blended_per_bd * n_business_days
+
+        # =====================================================================
+        # Cap final: blended não pode exceder média recente * 1.05
+        # (5% de folga para capturar tendência de alta real)
+        # =====================================================================
         monthly = self.history_stats.get('monthly_history', [])
         if monthly:
-            recent_6 = [m['volume'] for m in monthly[-6:]]
-            min_recent = min(recent_6)
-            max_recent = max(recent_6)
-            floor = min_recent * 0.90
-            ceiling = max_recent * 1.20
-            if blended < floor:
-                old_blended = blended
-                blended = floor
-                reason += f' Cap aplicado: mínimo {floor:,.0f} (90% do mínimo recente).'
-            elif blended > ceiling:
-                old_blended = blended
+            recent_months = monthly[-6:] if len(monthly) >= 6 else monthly
+            volumes = [m['volume'] for m in recent_months]
+            avg_vol = sum(volumes) / len(volumes)
+            ceiling = avg_vol * 1.05
+            if blended > ceiling:
                 blended = ceiling
-                reason += f' Cap aplicado: máximo {ceiling:,.0f} (120% do máximo recente).'
+                reason += f' Cap mensal: {ceiling:,.0f} (média*1.05).'
 
         return {
             'blended_volume': int(round(blended)),
             'ml_volume': int(ml_volume_month),
             'trend_info': trend,
             'adjustment_reason': reason,
-            'deviation_pct': round(deviation_pct, 1)
+            'deviation_pct': round(bd_deviation_pct, 1)
         }
 
     def _distribute_volume(self, total_vol, curva_dia, tmo_previsto, tmo_per_interval=None):
