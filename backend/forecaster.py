@@ -60,6 +60,40 @@ class _ExponentialSmoothingWrapper:
         return np.full(n, getattr(self, '_mean', 0))
 
 
+def _parse_interval_minutes(intervalo: str) -> int:
+    """Converte string de intervalo HH:MM para minutos desde meia-noite."""
+    try:
+        parts = str(intervalo).strip().split(':')
+        return int(parts[0]) * 60 + int(parts[1])
+    except (ValueError, IndexError):
+        return -1
+
+
+def _filter_curve_operational(curve_dict: dict, min_minutes: int = 300, max_minutes: int = 1440) -> dict:
+    """Filtra uma curva de distribuição para manter apenas intervalos operacionais e renormaliza.
+    
+    Args:
+        curve_dict: Dict {intervalo: proporcao}
+        min_minutes: Mínimo minuto do dia (default 300 = 05:00, para incluir 06:00+)
+        max_minutes: Máximo minuto do dia (default 1440 = 24:00 = 00:00 do dia seguinte)
+    
+    Returns:
+        Novo dict filtrado e renormalizado (soma = 1.0)
+    """
+    filtered = {}
+    for interv, prop in curve_dict.items():
+        mins = _parse_interval_minutes(interv)
+        if mins >= min_minutes and mins < max_minutes:
+            filtered[interv] = prop
+    
+    # Renormalizar para soma = 1.0
+    total = sum(filtered.values())
+    if total > 0:
+        filtered = {k: v / total for k, v in filtered.items()}
+    
+    return filtered
+
+
 class CallCenterForecaster:
     def __init__(self):
         # O modelo campeão será escolhido dinamicamente
@@ -579,12 +613,21 @@ class CallCenterForecaster:
                 interv = row['intervalo']
                 prop = row['proporcao']
                 self.distribution_curve[dia][interv] = prop
+            
+            # FILTRO: remover intervalos não operacionais (antes de 05:00) e renormalizar
+            # Isso evita que volume vaze para 00:00-04:50 quando o CSV tem intervalos de 30min 24h
+            for dia in range(7):
+                self.distribution_curve[dia] = _filter_curve_operational(
+                    self.distribution_curve[dia], min_minutes=300, max_minutes=1440
+                )
                 
             # Calcular curva consolidada ponderada pelo volume total de cada intervalo
             vol_por_interv = df_history.groupby('intervalo')['volume'].sum()
             soma_total = vol_por_interv.sum()
             if soma_total > 0:
-                self.distribution_curve['consolidado'] = (vol_por_interv / soma_total).to_dict()
+                self.distribution_curve['consolidado'] = _filter_curve_operational(
+                    (vol_por_interv / soma_total).to_dict(), min_minutes=300, max_minutes=1440
+                )
             else:
                 self.distribution_curve['consolidado'] = self.distribution_curve.get(0, {})
 
@@ -592,7 +635,9 @@ class CallCenterForecaster:
             vol_mediano_interv = df_history.groupby('intervalo')['volume'].median()
             soma_mediana = vol_mediano_interv.sum()
             if soma_mediana > 0:
-                self.distribution_curve['consolidado_mediana'] = (vol_mediano_interv / soma_mediana).to_dict()
+                self.distribution_curve['consolidado_mediana'] = _filter_curve_operational(
+                    (vol_mediano_interv / soma_mediana).to_dict(), min_minutes=300, max_minutes=1440
+                )
             else:
                 self.distribution_curve['consolidado_mediana'] = self.distribution_curve.get('consolidado', {})
 
@@ -603,7 +648,9 @@ class CallCenterForecaster:
             vol_desvio = vol_media + vol_std
             soma_desvio = vol_desvio.sum()
             if soma_desvio > 0:
-                self.distribution_curve['consolidado_desvio'] = (vol_desvio / soma_desvio).to_dict()
+                self.distribution_curve['consolidado_desvio'] = _filter_curve_operational(
+                    (vol_desvio / soma_desvio).to_dict(), min_minutes=300, max_minutes=1440
+                )
             else:
                 self.distribution_curve['consolidado_desvio'] = self.distribution_curve.get('consolidado', {})
 
@@ -619,7 +666,9 @@ class CallCenterForecaster:
             vol_sem_outlier = agrupamento_interv.apply(soma_sem_outliers)
             soma_sem_outlier_tot = vol_sem_outlier.sum()
             if soma_sem_outlier_tot > 0:
-                self.distribution_curve['consolidado_sem_outlier'] = (vol_sem_outlier / soma_sem_outlier_tot).to_dict()
+                self.distribution_curve['consolidado_sem_outlier'] = _filter_curve_operational(
+                    (vol_sem_outlier / soma_sem_outlier_tot).to_dict(), min_minutes=300, max_minutes=1440
+                )
             else:
                 self.distribution_curve['consolidado_sem_outlier'] = self.distribution_curve.get('consolidado', {})
                 
@@ -652,7 +701,9 @@ class CallCenterForecaster:
                 vol_por_interv_mes = df_mes.groupby('intervalo')['volume'].sum()
                 soma_total_mes = vol_por_interv_mes.sum()
                 if soma_total_mes > 0:
-                    self.distribution_curve[f'consolidado_{mes}'] = (vol_por_interv_mes / soma_total_mes).to_dict()
+                    self.distribution_curve[f'consolidado_{mes}'] = _filter_curve_operational(
+                        (vol_por_interv_mes / soma_total_mes).to_dict(), min_minutes=300, max_minutes=1440
+                    )
                 else:
                     self.distribution_curve[f'consolidado_{mes}'] = self.distribution_curve.get('consolidado', {})
                 
@@ -662,7 +713,9 @@ class CallCenterForecaster:
                         vol_por_interv_mes_dia = df_mes_dia.groupby('intervalo')['volume'].sum()
                         soma_total_mes_dia = vol_por_interv_mes_dia.sum()
                         if soma_total_mes_dia > 0:
-                            self.distribution_curve[f'{dia_idx}_{mes}'] = (vol_por_interv_mes_dia / soma_total_mes_dia).to_dict()
+                            self.distribution_curve[f'{dia_idx}_{mes}'] = _filter_curve_operational(
+                                (vol_por_interv_mes_dia / soma_total_mes_dia).to_dict(), min_minutes=300, max_minutes=1440
+                            )
                     
             self.history_stats['matrizes_intervalo'] = matrizes
             self.history_stats['matrizes_tmo'] = matrizes_tmo

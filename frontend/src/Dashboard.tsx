@@ -247,7 +247,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
   const [dimStrategy, setDimStrategy] = useState<SlaStrategy>('monthly_avg');
   const [dimOpHours, setDimOpHours] = useState<OperatingHoursConfig>({
-    weekdays: { start: '06:00', end: '17:30', closed: false },
+    weekdays: { start: '06:00', end: '00:00', closed: false },
     saturdays: { start: '06:00', end: '14:00', closed: false },
     sundays: { start: '00:00', end: '23:59', closed: true }
   });
@@ -875,7 +875,9 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   }, [optimizedMonthErlang, dimSelectedDay, monthComparisons, monthForecastData]);
 
   // Helper: compute valid shift start window indices from interval labels
-  // Restrição: turnos só podem iniciar entre 06:00 e 17:40 (blocos de 10 min)
+  // Regras: entrada permitida de 06:00 a 00:00 (meia-noite)
+  // Na tarde, última entrada às 17:40 (exceto necessidade operacional)
+  // Para o cálculo de shifts, usamos 06:00 como mínimo e o final dos dados como máximo
   const getShiftWindowIndices = (labels: string[]): { minStart: number; maxStart: number } => {
     let minStart = 0;
     let maxStart = labels.length - 1;
@@ -883,9 +885,12 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       const [h, m] = labels[i].split(':').map(Number);
       if (!isNaN(h) && !isNaN(m) && h * 60 + m >= 360) { minStart = i; break; }
     }
+    // Permitir shift starts até 00:00 (meia-noite) = 1440 min
+    // Não restringir mais o maxStart — deixar os dados definirem
+    // A restrição de 17:40 para tarde é aplicada na seleção de tipos de turno
     for (let i = labels.length - 1; i >= 0; i--) {
       const [h, m] = labels[i].split(':').map(Number);
-      if (!isNaN(h) && !isNaN(m) && h * 60 + m <= 1060) { maxStart = i; break; }
+      if (!isNaN(h) && !isNaN(m) && h * 60 + m <= 1439) { maxStart = i; break; }
     }
     return { minStart, maxStart };
   };
@@ -1402,12 +1407,41 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     setIsOptModalOpen(true);
   };
 
+  // Detectar o tamanho do chunk para agrupar intervalos no gráfico
+  // Se os dados são de 10 em 10 min → chunk de 3 (para mostrar a cada 30 min)
+  // Se os dados são de 30 em 30 min → chunk de 1 (sem agrupamento)
+  const chunkSize = useMemo(() => {
+    if (erlangData.length < 2) return 3;
+    const labels = erlangData.map(d => d.intervalo);
+    const parseMins = (l: string) => {
+      const [h, m] = l.split(':').map(Number);
+      return (!isNaN(h) && !isNaN(m)) ? h * 60 + m : -1;
+    };
+    // Encontrar dois intervalos consecutivos válidos
+    let prevMins = -1;
+    for (const label of labels) {
+      const mins = parseMins(label);
+      if (mins >= 0) {
+        if (prevMins >= 0) {
+          const diff = mins - prevMins;
+          if (diff > 0 && diff <= 120) {
+            // diff em minutos. Se 10 min → chunk 3 para 30 min. Se 30 min → chunk 1.
+            if (diff <= 15) return 3;  // 10-min intervals
+            return 1;                  // 30-min or larger
+          }
+        }
+        prevMins = mins;
+      }
+    }
+    return 3; // default
+  }, [erlangData]);
+
   const coverageChartData = useMemo(() => {
     if (!shiftSchedule || erlangData.length === 0) return [];
 
     const chunked = [];
-    for (let i = 0; i < erlangData.length; i += 3) {
-      const chunk = erlangData.slice(i, i + 3);
+    for (let i = 0; i < erlangData.length; i += chunkSize) {
+      const chunk = erlangData.slice(i, i + chunkSize);
       if (chunk.length === 0) continue;
 
       // Filtrar chunks onde todos os intervalos estão fechados (fora do horário de operação)
@@ -1440,14 +1474,14 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       });
     }
     return chunked;
-  }, [erlangData, shiftSchedule]);
+  }, [erlangData, shiftSchedule, chunkSize]);
 
   const erlangChartData = useMemo(() => {
     if (erlangData.length === 0) return [];
 
     const chunked = [];
-    for (let i = 0; i < erlangData.length; i += 3) {
-      const chunk = erlangData.slice(i, i + 3);
+    for (let i = 0; i < erlangData.length; i += chunkSize) {
+      const chunk = erlangData.slice(i, i + chunkSize);
       if (chunk.length === 0) continue;
 
       // Filtrar chunks onde todos os intervalos estão fechados
@@ -1466,7 +1500,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       });
     }
     return chunked;
-  }, [erlangData]);
+  }, [erlangData, chunkSize]);
 
 
   const exportMonthlyCSV = () => {

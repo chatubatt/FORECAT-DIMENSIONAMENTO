@@ -270,13 +270,15 @@ function parseIntervalToMinutes(interval: string): number {
 
 /**
  * Verifica se um horário de intervalo está dentro da janela operacional válida.
- * Restrição: horários de 00:00 a 05:50 e de 17:50 a 23:30 são BLOQUEADOS.
- * Apenas intervalos entre 06:00 e 17:50 são permitidos para colocar operadores.
+ * A janela é controlada pelo dimOpHours do usuário (config), não hardcoded.
+ * Esta função é usada apenas como fallback quando não há config disponível.
+ * Janela padrão flexível: 05:00 a 23:59 (permite que o config defina os limites reais).
  */
 export function isValidOperatingInterval(interval: string): boolean {
   const mins = parseIntervalToMinutes(interval);
   if (mins < 0) return false;
-  return mins >= 360 && mins <= 1070; // 06:00 (360) a 17:50 (1070)
+  // Janela flexível: qualquer horário válido (o controle fino é feito pelo config dimOpHours)
+  return mins >= 300 && mins <= 1439; // 05:00 (300) a 23:59 (1439)
 }
 
 export function isWithinOperatingHours(dateStr: string, interval: string, config: OperatingHoursConfig): boolean {
@@ -333,7 +335,7 @@ export function calculateStaffingStrategy(
     }
   }
 
-  // Determinar a janela operacional REAL (mais restritiva entre config e isValidOperatingInterval)
+  // Determinar a janela operacional a partir da config do usuário (sem caps hardcoded)
   const getEffectiveOpWindow = (dateStr: string): { startMins: number; endMins: number } | null => {
     const d = new Date(dateStr + "T00:00:00");
     const day = d.getDay();
@@ -347,11 +349,14 @@ export function calculateStaffingStrategy(
     const cfgStart = parseIntervalToMinutes(hours.start);
     const cfgEnd = parseIntervalToMinutes(hours.end);
 
-    // Janela mais restritiva: max(config start, 06:00) e min(config end, 17:50)
-    const effectiveStart = Math.max(cfgStart, 360); // 06:00
-    const effectiveEnd = Math.min(cfgEnd, 1070);   // 17:50
+    // Suportar janela que atravessa meia-noite (ex: 06:00-00:00)
+    // Se endMins <= startMins, a janela cruza meia-noite
+    if (cfgEnd <= cfgStart) {
+      // Janela cruza meia-noite: qualquer horário >= start OU < end
+      return { startMins: cfgStart, endMins: cfgEnd, crossesMidnight: true } as any;
+    }
 
-    return { startMins: effectiveStart, endMins: effectiveEnd };
+    return { startMins: cfgStart, endMins: cfgEnd };
   };
 
   // 1. Calculate baseline strictly for each interval
@@ -366,6 +371,9 @@ export function calculateStaffingStrategy(
       let isClosed = false;
       if (!intMinsValid || !opWindow) {
         isClosed = true;
+      } else if ((opWindow as any).crossesMidnight) {
+        // Janela cruza meia-noite: operacional se >= start OU < end
+        isClosed = !(intMins >= opWindow.startMins || intMins < opWindow.endMins);
       } else {
         isClosed = !(intMins >= opWindow.startMins && intMins < opWindow.endMins);
       }
