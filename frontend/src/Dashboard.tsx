@@ -1287,21 +1287,28 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   const shiftSchedule = useMemo(() => {
     if (erlangData.length === 0 || dimEnabledShifts.length === 0) return null;
 
+    let result: any = null;
+
     if (dimStrategy === 'monthly_avg' && monthlyShiftSchedules.length > 0) {
       const targetDate = dimSelectedDay || monthComparisons?.dmm_data || monthForecastData[0]?.data;
       const selectedMonthlyDay = monthlyShiftSchedules.find(d => d.data === targetDate);
       if (selectedMonthlyDay && selectedMonthlyDay.shiftRes) {
-        return selectedMonthlyDay.shiftRes;
+        result = selectedMonthlyDay.shiftRes;
       }
     }
 
-    // Pegar o array de requiredAgents
-    const requiredAgents = erlangData.map(d => d.requiredAgents);
-    const intervalLabels = erlangData.map(d => d.intervalo);
+    // Se não encontrou schedule otimizado OU se a cobertura total é zero,
+    // fazer cálculo direto como fallback garantido
+    const totalCoverage = result?.coverage?.reduce((s: number, v: number) => s + v, 0) || 0;
+    if (!result || totalCoverage === 0) {
+      const requiredAgents = erlangData.map(d => d.requiredAgents);
+      const intervalLabels = erlangData.map(d => d.intervalo);
+      const opDays = 7 - (dimOpHours.sundays.closed ? 1 : 0) - (dimOpHours.saturdays.closed ? 1 : 0);
+      const { minStart: sMin, maxStart: sMax } = getShiftWindowIndices(intervalLabels);
+      result = calculateShifts(requiredAgents, intervalLabels, dimEnabledShifts, opDays, sMin, sMax);
+    }
 
-    const opDays = 7 - (dimOpHours.sundays.closed ? 1 : 0) - (dimOpHours.saturdays.closed ? 1 : 0);
-    const { minStart: sMin, maxStart: sMax } = getShiftWindowIndices(intervalLabels);
-    return calculateShifts(requiredAgents, intervalLabels, dimEnabledShifts, opDays, sMin, sMax);
+    return result;
   }, [erlangData, dimEnabledShifts, dimStrategy, monthlyShiftSchedules, dimSelectedDay, monthComparisons, monthForecastData, dimOpHours]);
 
   // ---- Alocação Automática 06:20 | 08:12 ----
