@@ -883,7 +883,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     let maxStart = labels.length - 1;
     for (let i = 0; i < labels.length; i++) {
       const [h, m] = labels[i].split(':').map(Number);
-      if (!isNaN(h) && !isNaN(m) && h * 60 + m >= 360) { minStart = i; break; }
+      if (!isNaN(h) && !isNaN(m) && h * 60 + m >= 0) { minStart = i; break; }
     }
     // Permitir shift starts até 00:00 (meia-noite) = 1440 min
     // Não restringir mais o maxStart — deixar os dados definirem

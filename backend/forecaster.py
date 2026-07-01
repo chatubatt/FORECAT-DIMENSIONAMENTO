@@ -69,12 +69,12 @@ def _parse_interval_minutes(intervalo: str) -> int:
         return -1
 
 
-def _filter_curve_operational(curve_dict: dict, min_minutes: int = 300, max_minutes: int = 1440) -> dict:
+def _filter_curve_operational(curve_dict: dict, min_minutes: int = 0, max_minutes: int = 1440) -> dict:
     """Filtra uma curva de distribuição para manter apenas intervalos operacionais e renormaliza.
     
     Args:
         curve_dict: Dict {intervalo: proporcao}
-        min_minutes: Mínimo minuto do dia (default 300 = 05:00, para incluir 06:00+)
+        min_minutes: Mínimo minuto do dia (default 0 = 00:00, para 24h)
         max_minutes: Máximo minuto do dia (default 1440 = 24:00 = 00:00 do dia seguinte)
     
     Returns:
@@ -618,7 +618,7 @@ class CallCenterForecaster:
             # Isso evita que volume vaze para 00:00-04:50 quando o CSV tem intervalos de 30min 24h
             for dia in range(7):
                 self.distribution_curve[dia] = _filter_curve_operational(
-                    self.distribution_curve[dia], min_minutes=300, max_minutes=1440
+                    self.distribution_curve[dia], min_minutes=0, max_minutes=1440
                 )
                 
             # Calcular curva consolidada ponderada pelo volume total de cada intervalo
@@ -626,7 +626,7 @@ class CallCenterForecaster:
             soma_total = vol_por_interv.sum()
             if soma_total > 0:
                 self.distribution_curve['consolidado'] = _filter_curve_operational(
-                    (vol_por_interv / soma_total).to_dict(), min_minutes=300, max_minutes=1440
+                    (vol_por_interv / soma_total).to_dict(), min_minutes=0, max_minutes=1440
                 )
             else:
                 self.distribution_curve['consolidado'] = self.distribution_curve.get(0, {})
@@ -636,7 +636,7 @@ class CallCenterForecaster:
             soma_mediana = vol_mediano_interv.sum()
             if soma_mediana > 0:
                 self.distribution_curve['consolidado_mediana'] = _filter_curve_operational(
-                    (vol_mediano_interv / soma_mediana).to_dict(), min_minutes=300, max_minutes=1440
+                    (vol_mediano_interv / soma_mediana).to_dict(), min_minutes=0, max_minutes=1440
                 )
             else:
                 self.distribution_curve['consolidado_mediana'] = self.distribution_curve.get('consolidado', {})
@@ -649,7 +649,7 @@ class CallCenterForecaster:
             soma_desvio = vol_desvio.sum()
             if soma_desvio > 0:
                 self.distribution_curve['consolidado_desvio'] = _filter_curve_operational(
-                    (vol_desvio / soma_desvio).to_dict(), min_minutes=300, max_minutes=1440
+                    (vol_desvio / soma_desvio).to_dict(), min_minutes=0, max_minutes=1440
                 )
             else:
                 self.distribution_curve['consolidado_desvio'] = self.distribution_curve.get('consolidado', {})
@@ -667,7 +667,7 @@ class CallCenterForecaster:
             soma_sem_outlier_tot = vol_sem_outlier.sum()
             if soma_sem_outlier_tot > 0:
                 self.distribution_curve['consolidado_sem_outlier'] = _filter_curve_operational(
-                    (vol_sem_outlier / soma_sem_outlier_tot).to_dict(), min_minutes=300, max_minutes=1440
+                    (vol_sem_outlier / soma_sem_outlier_tot).to_dict(), min_minutes=0, max_minutes=1440
                 )
             else:
                 self.distribution_curve['consolidado_sem_outlier'] = self.distribution_curve.get('consolidado', {})
@@ -702,7 +702,7 @@ class CallCenterForecaster:
                 soma_total_mes = vol_por_interv_mes.sum()
                 if soma_total_mes > 0:
                     self.distribution_curve[f'consolidado_{mes}'] = _filter_curve_operational(
-                        (vol_por_interv_mes / soma_total_mes).to_dict(), min_minutes=300, max_minutes=1440
+                        (vol_por_interv_mes / soma_total_mes).to_dict(), min_minutes=0, max_minutes=1440
                     )
                 else:
                     self.distribution_curve[f'consolidado_{mes}'] = self.distribution_curve.get('consolidado', {})
@@ -714,7 +714,7 @@ class CallCenterForecaster:
                         soma_total_mes_dia = vol_por_interv_mes_dia.sum()
                         if soma_total_mes_dia > 0:
                             self.distribution_curve[f'{dia_idx}_{mes}'] = _filter_curve_operational(
-                                (vol_por_interv_mes_dia / soma_total_mes_dia).to_dict(), min_minutes=300, max_minutes=1440
+                                (vol_por_interv_mes_dia / soma_total_mes_dia).to_dict(), min_minutes=0, max_minutes=1440
                             )
                     
             self.history_stats['matrizes_intervalo'] = matrizes
