@@ -162,6 +162,8 @@ const getWorkdays = (year: number, month: number) => {
 
 export const defaultShrinkage = { abs: 0, nr17: 8.63, treinamento: 0, turnover: 0, outros: 0 };
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
   useEffect(() => {
@@ -439,7 +441,7 @@ export default function Dashboard() {
     formData.append('file', file);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/parse-years', {
+      const response = await fetch(`${API_URL}/parse-years`, {
         method: 'POST',
         body: formData,
       });
@@ -469,7 +471,7 @@ export default function Dashboard() {
     formData.append('anos_selecionados', selectedTrainYears.join(','));
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/upload-history', {
+      const response = await fetch(`${API_URL}/upload-history`, {
         method: 'POST',
         body: formData,
       });
@@ -514,13 +516,13 @@ export default function Dashboard() {
 
   const loadForecast = async () => {
     try {
-      const response = await fetch(`http://127.0.0.1:8000/forecast?dias=7&celula=${encodeURIComponent(selectedCelula)}`);
+      const response = await fetch(`${API_URL}/forecast?dias=7&celula=${encodeURIComponent(selectedCelula)}`);
       const data = await response.json();
       if (data.forecast_diario) {
         setForecastData(data.forecast_diario);
       }
 
-      const statsRes = await fetch(`http://127.0.0.1:8000/stats?celula=${encodeURIComponent(selectedCelula)}`);
+      const statsRes = await fetch(`${API_URL}/stats?celula=${encodeURIComponent(selectedCelula)}`);
       const statsData = await statsRes.json();
       if (statsData.stats) {
         setStats(statsData.stats);
@@ -547,7 +549,7 @@ export default function Dashboard() {
   const loadMonthForecast = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/forecast-month?year=${selectedYear}&month=${selectedMonth}&celula=${encodeURIComponent(selectedCelula)}`);
+      const response = await fetch(`${API_URL}/forecast-month?year=${selectedYear}&month=${selectedMonth}&celula=${encodeURIComponent(selectedCelula)}`);
       const data = await response.json();
       if (data.forecast_mensal) {
         if (Array.isArray(data.forecast_mensal)) {
