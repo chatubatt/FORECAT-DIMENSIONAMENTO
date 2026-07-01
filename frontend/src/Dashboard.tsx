@@ -878,19 +878,22 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   // Regras: entrada permitida de 06:00 a 00:00 (meia-noite)
   // Na tarde, última entrada às 17:40 (exceto necessidade operacional)
   // Para o cálculo de shifts, usamos 06:00 como mínimo e o final dos dados como máximo
-  const getShiftWindowIndices = (labels: string[]): { minStart: number; maxStart: number } => {
+  const getShiftWindowIndices = (labels: string[], opStart: string = '00:00', opEnd: string = '23:59'): { minStart: number; maxStart: number } => {
     let minStart = 0;
     let maxStart = labels.length - 1;
+    const [sH, sM] = opStart.split(':').map(Number);
+    const startMins = (isNaN(sH) ? 0 : sH) * 60 + (isNaN(sM) ? 0 : sM);
+    const [eH, eM] = opEnd.split(':').map(Number);
+    let endMins = (isNaN(eH) ? 23 : eH) * 60 + (isNaN(eM) ? 59 : eM);
+    if (opEnd === '00:00') endMins = 1440; // Especial case for midnight close
+
     for (let i = 0; i < labels.length; i++) {
       const [h, m] = labels[i].split(':').map(Number);
-      if (!isNaN(h) && !isNaN(m) && h * 60 + m >= 0) { minStart = i; break; }
+      if (!isNaN(h) && !isNaN(m) && h * 60 + m >= startMins) { minStart = i; break; }
     }
-    // Permitir shift starts até 00:00 (meia-noite) = 1440 min
-    // Não restringir mais o maxStart — deixar os dados definirem
-    // A restrição de 17:40 para tarde é aplicada na seleção de tipos de turno
     for (let i = labels.length - 1; i >= 0; i--) {
       const [h, m] = labels[i].split(':').map(Number);
-      if (!isNaN(h) && !isNaN(m) && h * 60 + m <= 1439) { maxStart = i; break; }
+      if (!isNaN(h) && !isNaN(m) && h * 60 + m <= endMins) { maxStart = i; break; }
     }
     return { minStart, maxStart };
   };
@@ -927,7 +930,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
     // Compute valid shift start window indices
     const dmmWeekdayLabels = dmmWeekday ? byDay[dmmWeekday].map(d => d.intervalo) : [];
-    const { minStart: wMin, maxStart: wMax } = getShiftWindowIndices(dmmWeekdayLabels.length > 0 ? dmmWeekdayLabels : ['00:00']);
+    const { minStart: wMin, maxStart: wMax } = getShiftWindowIndices(dmmWeekdayLabels.length > 0 ? dmmWeekdayLabels : ['00:00'], dimOpHours.weekdays.start, dimOpHours.weekdays.end);
 
     // Pre-calculate shiftRes for these DMMs
     let baseSchedules: Record<string, any> = {};
@@ -939,13 +942,13 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     if (dmmSat) {
       const req = byDay[dmmSat].map(d => d.requiredAgents);
       const lbl = byDay[dmmSat].map(d => d.intervalo);
-      const w = getShiftWindowIndices(lbl);
+      const w = getShiftWindowIndices(lbl, dimOpHours.saturdays.start, dimOpHours.saturdays.end);
       baseSchedules.saturday = calculateShifts(req, lbl, dimEnabledShifts, opDays, w.minStart, w.maxStart);
     }
     if (dmmSun) {
       const req = byDay[dmmSun].map(d => d.requiredAgents);
       const lbl = byDay[dmmSun].map(d => d.intervalo);
-      const w = getShiftWindowIndices(lbl);
+      const w = getShiftWindowIndices(lbl, dimOpHours.sundays.start, dimOpHours.sundays.end);
       baseSchedules.sunday = calculateShifts(req, lbl, dimEnabledShifts, opDays, w.minStart, w.maxStart);
     }
 
@@ -1078,7 +1081,10 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       if (!baseRes) {
         const req = intervals.map(d => d.requiredAgents);
         const lbl = intervals.map(d => d.intervalo);
-        const w = getShiftWindowIndices(lbl);
+        let opCfg = dimOpHours.weekdays;
+        if (dayOfWeek === 0) opCfg = dimOpHours.sundays;
+        else if (dayOfWeek === 6) opCfg = dimOpHours.saturdays;
+        const w = getShiftWindowIndices(lbl, opCfg.start, opCfg.end);
         baseRes = calculateShifts(req, lbl, dimEnabledShifts, opDays, w.minStart, w.maxStart);
       }
 
@@ -1304,7 +1310,15 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       const requiredAgents = erlangData.map(d => d.requiredAgents);
       const intervalLabels = erlangData.map(d => d.intervalo);
       const opDays = 7 - (dimOpHours.sundays.closed ? 1 : 0) - (dimOpHours.saturdays.closed ? 1 : 0);
-      const { minStart: sMin, maxStart: sMax } = getShiftWindowIndices(intervalLabels);
+      
+      const targetDate = dimSelectedDay || monthComparisons?.dmm_data || monthForecastData[0]?.data;
+      const d = targetDate ? new Date(targetDate + 'T00:00:00') : new Date();
+      const dow = d.getDay();
+      let opCfg = dimOpHours.weekdays;
+      if (dow === 0) opCfg = dimOpHours.sundays;
+      else if (dow === 6) opCfg = dimOpHours.saturdays;
+
+      const { minStart: sMin, maxStart: sMax } = getShiftWindowIndices(intervalLabels, opCfg.start, opCfg.end);
       result = calculateShifts(requiredAgents, intervalLabels, dimEnabledShifts, opDays, sMin, sMax);
     }
 
@@ -1329,7 +1343,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     if (opCfg.closed) return null;
 
     // Restringir janela de início de turnos: 06:00 a 17:40
-    const { minStart, maxStart } = getShiftWindowIndices(labels);
+    const { minStart, maxStart } = getShiftWindowIndices(labels, opCfg.start, opCfg.end);
     const effectiveStart = labels[minStart] || '06:00';
     const effectiveEnd = labels[Math.min(maxStart + 1, labels.length - 1)] || '17:50';
     if (effectiveStart >= effectiveEnd) return null;
@@ -1364,7 +1378,14 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     if (erlangData.length === 0) return [];
     const required = erlangData.map(d => d.requiredAgents);
     const labels = erlangData.map(d => d.intervalo);
-    const { minStart: cMin, maxStart: cMax } = getShiftWindowIndices(labels);
+    const targetDate = dimSelectedDay || monthComparisons?.dmm_data || monthForecastData[0]?.data;
+    const d = targetDate ? new Date(targetDate + 'T00:00:00') : new Date();
+    const dow = d.getDay();
+    let opCfg = dimOpHours.weekdays;
+    if (dow === 0) opCfg = dimOpHours.sundays;
+    else if (dow === 6) opCfg = dimOpHours.saturdays;
+
+    const { minStart: cMin, maxStart: cMax } = getShiftWindowIndices(labels, opCfg.start, opCfg.end);
     return compareShiftCombinations(required, labels, costPerAgent, overheadPercent, 7, cMin, cMax);
   }, [erlangData, costPerAgent, overheadPercent]);
 
@@ -1390,7 +1411,15 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
     const requiredAgents = erlangData.map(d => d.requiredAgents);
     const intervalLabels = erlangData.map(d => d.intervalo);
-    const { minStart: oMin, maxStart: oMax } = getShiftWindowIndices(intervalLabels);
+
+    const targetDate = dimSelectedDay || monthComparisons?.dmm_data || monthForecastData[0]?.data;
+    const d = targetDate ? new Date(targetDate + 'T00:00:00') : new Date();
+    const dow = d.getDay();
+    let opCfg = dimOpHours.weekdays;
+    if (dow === 0) opCfg = dimOpHours.sundays;
+    else if (dow === 6) opCfg = dimOpHours.saturdays;
+
+    const { minStart: oMin, maxStart: oMax } = getShiftWindowIndices(intervalLabels, opCfg.start, opCfg.end);
 
     const results = combinations.map(combo => {
       const opDays = 7 - (dimOpHours.sundays.closed ? 1 : 0) - (dimOpHours.saturdays.closed ? 1 : 0);
