@@ -22,6 +22,18 @@ interface HistoricoVolume {
   volume: number;
 }
 
+interface BlendInfo {
+  ml_volume_raw: number;
+  blended_volume: number;
+  adjustment_reason: string;
+  trend_direction: string;
+  trend_pct: number;
+  avg_recent_3m: number;
+  avg_per_bd_recent: number;
+  deviation_pct: number;
+  n_business_days: number;
+}
+
 interface ForecastComparisons {
   volume_projetado: number;
   dmm_vol: number;
@@ -34,6 +46,7 @@ interface ForecastComparisons {
   ultimos_3_meses: HistoricoVolume[];
   feriados_mes?: string[];
   dias_excluidos?: string[];
+  blend_info?: BlendInfo;
 }
 
 interface CalendarioStat {
@@ -2870,6 +2883,60 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                     <h3 className="text-lg font-semibold mb-4 text-emerald-400 flex items-center gap-2">
                       <span>📊</span> Justificativa do Volume Projetado (Picos)
                     </h3>
+
+                    {/* === NOVO: Card de Ajuste de Tendência === */}
+                    {monthComparisons.blend_info && monthComparisons.blend_info.ml_volume_raw !== monthComparisons.blend_info.blended_volume && (
+                      <div className="bg-slate-700/30 p-4 rounded-lg border-l-4 border-cyan-500 mb-4">
+                        <div className="flex justify-between items-start mb-2">
+                          <p className="text-slate-400 text-xs uppercase">Ajuste Inteligente de Tendência</p>
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${
+                            monthComparisons.blend_info.trend_direction === 'decrescente'
+                              ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                              : monthComparisons.blend_info.trend_direction === 'crescente'
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                          }`}>
+                            Tendência: {monthComparisons.blend_info.trend_direction === 'decrescente' ? '▼ Queda' : monthComparisons.blend_info.trend_direction === 'crescente' ? '▲ Crescimento' : '— Estável'}
+                            {monthComparisons.blend_info.trend_pct !== 0 && (
+                              <span className="ml-1">({monthComparisons.blend_info.trend_pct > 0 ? '+' : ''}{monthComparisons.blend_info.trend_pct.toFixed(1)}%/mês)</span>
+                            )}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 mb-3">
+                          <div className="text-center">
+                            <p className="text-[10px] text-slate-500 uppercase">Volume ML (puro)</p>
+                            <p className="text-lg font-bold text-red-400 line-through decoration-red-400/50">{monthComparisons.blend_info.ml_volume_raw.toLocaleString()}</p>
+                          </div>
+                          <div className="text-center flex items-center justify-center">
+                            <div className="text-cyan-400">
+                              <p className="text-[10px] text-slate-500 uppercase">Ajuste</p>
+                              <p className="text-lg font-bold">
+                                {monthComparisons.blend_info.blended_volume > monthComparisons.blend_info.ml_volume_raw ? '▲' : '▼'}
+                                {Math.abs(((monthComparisons.blend_info.blended_volume / monthComparisons.blend_info.ml_volume_raw) - 1) * 100).toFixed(1)}%
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[10px] text-slate-500 uppercase">Volume Ajustado</p>
+                            <p className="text-lg font-bold text-emerald-400">{monthComparisons.blend_info.blended_volume.toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-[11px]">
+                          <div className="flex justify-between bg-slate-800/50 p-2 rounded">
+                            <span className="text-slate-500">Média 3 meses recentes:</span>
+                            <span className="font-medium text-slate-300">{monthComparisons.blend_info.avg_recent_3m.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between bg-slate-800/50 p-2 rounded">
+                            <span className="text-slate-500">Vol/DU recente:</span>
+                            <span className="font-medium text-slate-300">{monthComparisons.blend_info.avg_per_bd_recent.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-2 leading-tight border-t border-[rgba(99,102,241,0.08)] pt-2">
+                          {monthComparisons.blend_info.adjustment_reason}
+                        </p>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="bg-slate-700/30 p-4 rounded-lg border-l-4 border-blue-500">
                         <p className="text-slate-400 text-xs uppercase mb-1">Volume Total Projetado</p>

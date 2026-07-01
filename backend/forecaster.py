@@ -937,24 +937,176 @@ class CallCenterForecaster:
         return {"status": "Treinamento concluído com sucesso"}
         
     def _predict_volume(self, X):
-        """Prediz volume usando Ensemble ponderado ou modelo único."""
+        """Prediz volume usando Ensemble ponderado ou modelo único.
+
+        NÃO aplica mais multiplicadores fixos — os picos de DMM/Dia 20 são
+        capturados pelo próprio modelo ML a partir do histórico real.
+        """
         if getattr(self, '_use_ensemble', False):
             preds = np.zeros(len(X))
             for model, weight in zip(self._ensemble_models, self._ensemble_weights):
                 preds += model.predict(X) * weight
         else:
             preds = self.vol_model.predict(X)
-            
-        # Pós-processamento (Regra de Negócio):
-        # Como o volume de Segundas-feiras costuma ser muito alto na média, o modelo pode ofuscar
-        # o pico do 5º dia útil se o histórico fornecido for curto.
-        # Para garantir a premissa de negócio (DMM no 5º dia útil e Dia 20), aplicamos um multiplicador
-        # que representa o comportamento real do mercado de Call Center.
-        if 'is_5o_dia_util' in X.columns and 'is_dia_20' in X.columns:
-            preds = np.where(X['is_5o_dia_util'] == 1, preds * 1.35, preds)
-            preds = np.where(X['is_dia_20'] == 1, preds * 1.25, preds)
-            
+
         return preds.astype(int)
+
+    # =========================================================================
+    # NOVO: Detecção de tendência e blending com meses recentes
+    # =========================================================================
+    def _get_recent_trend(self, n_months=3):
+        """Calcula a tendência de volume dos últimos N meses.
+
+        Retorna:
+            dict com:
+                - avg_recent: média de volume mensal dos últimos N meses
+                - trend_pct: variação percentual mês-a-mês (positiva = crescendo)
+                - avg_per_bd: volume médio por dia útil
+                - trend_direction: 'crescente', 'decrescente', 'estavel'
+        """
+        monthly = self.history_stats.get('monthly_history', [])
+        if len(monthly) < 2:
+            return {'avg_recent': 0, 'trend_pct': 0, 'avg_per_bd': 0, 'trend_direction': 'estavel'}
+
+        recent = monthly[-n_months:] if len(monthly) >= n_months else monthly
+        volumes = [m['volume'] for m in recent]
+
+        # Calcular dias úteis aproximados dos últimos meses (usar dados de treino)
+        df_daily = getattr(self, '_df_daily_train', None)
+        bd_counts = []
+        if df_daily is not None and 'data' in df_daily.columns:
+            import holidays as hol
+            br_hol = hol.Brazil()
+            for m in recent:
+                ano, mes = int(m['ano_mes'][:4]), int(m['ano_mes'][5:7])
+                _, num_days = calendar.monthrange(ano, mes)
+                bd = sum(
+                    1 for d in range(1, num_days + 1)
+                    if datetime.date(ano, mes, d).weekday() < 5
+                    and datetime.date(ano, mes, d) not in br_hol
+                )
+                bd_counts.append(bd)
+
+        avg_recent = np.mean(volumes)
+        avg_bd = np.mean(bd_counts) if bd_counts else 22
+        avg_per_bd = avg_recent / avg_bd if avg_bd > 0 else 0
+
+        # Tendência: regressão linear simples sobre os volumes mensais
+        if len(volumes) >= 2:
+            x = np.arange(len(volumes), dtype=float)
+            slope = np.polyfit(x, volumes, 1)[0]
+            trend_pct = (slope / avg_recent * 100) if avg_recent > 0 else 0
+            if trend_pct > 2:
+                direction = 'crescente'
+            elif trend_pct < -2:
+                direction = 'decrescente'
+            else:
+                direction = 'estavel'
+        else:
+            trend_pct = 0
+            direction = 'estavel'
+
+        return {
+            'avg_recent': round(avg_recent, 2),
+            'trend_pct': round(trend_pct, 2),
+            'avg_per_bd': round(avg_per_bd, 2),
+            'trend_direction': direction
+        }
+
+    def _blend_forecast_with_recent(self, ml_volume_month, n_business_days):
+        """Blenda a previsão do ML com a média dos últimos meses.
+
+        A lógica:
+        1. Se o ML está dentro de ±15% da média recente → usa o ML (confia no modelo)
+        2. Se o ML está acima de +15% → blend com média recente (60% ML + 40% média recente)
+        3. Se o ML está acima de +30% → blend agressivo (40% ML + 60% média recente)
+        4. Se o ML está abaixo de -15% → blend com média recente (60% ML + 40% média recente)
+        5. Sempre aplica a tendência detectada sobre a base recente
+
+        Args:
+            ml_volume_month: Volume total previsto pelo ML para o mês
+            n_business_days: Número de dias úteis no mês previsto
+
+        Returns:
+            dict com 'blended_volume', 'ml_volume', 'trend_info', 'adjustment_reason'
+        """
+        trend = self._get_recent_trend(n_months=3)
+        avg_recent = trend['avg_recent']
+        trend_pct = trend['trend_pct']
+        trend_direction = trend['trend_direction']
+        avg_per_bd_recent = trend['avg_per_bd']
+
+        if avg_recent <= 0:
+            return {
+                'blended_volume': ml_volume_month,
+                'ml_volume': ml_volume_month,
+                'trend_info': trend,
+                'adjustment_reason': 'dados insuficientes'
+            }
+
+        # Calcular base ajustada pela tendência (projetar 1 mês à frente)
+        # Se a tendência é de queda de -5%/mês, a base ajustada = avg_recent * (1 + (-0.05))
+        trend_adjusted_base = avg_recent * (1 + trend_pct / 100)
+
+        # Calcular o desvio do ML em relação à base ajustada
+        if trend_adjusted_base > 0:
+            deviation_pct = ((ml_volume_month - trend_adjusted_base) / trend_adjusted_base) * 100
+        else:
+            deviation_pct = 0
+
+        reason = ''
+        blended = ml_volume_month
+
+        if abs(deviation_pct) <= 15:
+            # ML está razoável → confiar no ML mas aplicar leve ajuste de tendência
+            blended = ml_volume_month * 0.85 + trend_adjusted_base * 0.15
+            reason = f'ML dentro do range (±15%). Leve blend 85/15 com tendência.'
+        elif deviation_pct > 15 and deviation_pct <= 30:
+            # ML está otimista demais → blend moderado
+            alpha = 0.60
+            blended = ml_volume_month * alpha + trend_adjusted_base * (1 - alpha)
+            reason = f'ML {deviation_pct:+.1f}% acima da tendência. Blend 60/40 para reduzir overshoot.'
+        elif deviation_pct > 30:
+            # ML está MUITO otimista → blend agressivo
+            alpha = 0.40
+            blended = ml_volume_month * alpha + trend_adjusted_base * (1 - alpha)
+            reason = f'ML {deviation_pct:+.1f}% acima da tendência. Blend agressivo 40/60 para corrigir overshoot.'
+        elif deviation_pct < -15 and deviation_pct >= -30:
+            # ML está pessimista demais → blend moderado
+            alpha = 0.60
+            blended = ml_volume_month * alpha + trend_adjusted_base * (1 - alpha)
+            reason = f'ML {deviation_pct:+.1f}% abaixo da tendência. Blend 60/40 para ajustar.'
+        elif deviation_pct < -30:
+            # ML está MUITO pessimista → blend agressivo
+            alpha = 0.40
+            blended = ml_volume_month * alpha + trend_adjusted_base * (1 - alpha)
+            reason = f'ML {deviation_pct:+.1f}% abaixo da tendência. Blend agressivo 40/60 para ajustar.'
+
+        # Segurança: nunca permitir que blended fique mais de 10% abaixo do mínimo recente
+        # nem mais de 20% acima do máximo recente (entre os últimos 6 meses)
+        monthly = self.history_stats.get('monthly_history', [])
+        if monthly:
+            recent_6 = [m['volume'] for m in monthly[-6:]]
+            min_recent = min(recent_6)
+            max_recent = max(recent_6)
+            floor = min_recent * 0.90
+            ceiling = max_recent * 1.20
+            if blended < floor:
+                old_blended = blended
+                blended = floor
+                reason += f' Cap aplicado: mínimo {floor:,.0f} (90% do mínimo recente).'
+            elif blended > ceiling:
+                old_blended = blended
+                blended = ceiling
+                reason += f' Cap aplicado: máximo {ceiling:,.0f} (120% do máximo recente).'
+
+        return {
+            'blended_volume': int(round(blended)),
+            'ml_volume': int(ml_volume_month),
+            'trend_info': trend,
+            'adjustment_reason': reason,
+            'deviation_pct': round(deviation_pct, 1)
+        }
 
     def _distribute_volume(self, total_vol, curva_dia, tmo_previsto, tmo_per_interval=None):
         """Distribui o volume total diário nos intervalos da curva intra-diária.
@@ -1113,7 +1265,36 @@ class CallCenterForecaster:
         df_pred['tmo_previsto'] = self.tmo_model.predict(X).astype(int)
         
         forecast_std = getattr(self, '_forecast_std', 0.0)
-        
+
+        # ====================================================================
+        # Blending com tendência recente para evitar overshoot
+        # ====================================================================
+        ml_volume_raw = df_pred['volume_previsto'].sum()
+
+        # Contar dias úteis do mês previsto
+        br_hol_pred = holidays.Brazil()
+        n_bd_mes = sum(
+            1 for d in range(1, num_days + 1)
+            if datetime.date(year, month, d).weekday() < 5
+            and datetime.date(year, month, d) not in br_hol_pred
+        )
+
+        blend_result = self._blend_forecast_with_recent(ml_volume_raw, n_bd_mes)
+        blended_volume = blend_result['blended_volume']
+
+        # Aplicar o fator de escala proporcionalmente a cada dia
+        if ml_volume_raw > 0:
+            scale_factor = blended_volume / ml_volume_raw
+        else:
+            scale_factor = 1.0
+
+        # Reescalar previsões diárias ANTES de construir resultados
+        df_pred['volume_previsto'] = (df_pred['volume_previsto'] * scale_factor).astype(int)
+
+        # Agora construir resultados com valores já ajustados
+        volume_projetado = df_pred['volume_previsto'].sum()
+        volume_projetado_raw = ml_volume_raw  # guardar para comparação no response
+
         resultados = []
         for _, row in df_pred.iterrows():
             dia_semana = row['data'].weekday()
@@ -1126,23 +1307,21 @@ class CallCenterForecaster:
                 tmo_per_interval=tmo_per_interval
             )
 
-            # Intervalos de confiança específicos por dia da semana
+            # Intervalos de confiança específicos por dia da semana (também escalados)
             dow_std = self._std_by_dow.get(dia_semana, forecast_std)
                 
             resultados.append({
                 "data": row['data'].isoformat(),
-                "volume_total": row['volume_previsto'],
-                "tmo_medio": row['tmo_previsto'],
-                "volume_lower": max(0, int(row['volume_previsto'] - forecast_std)),
-                "volume_upper": int(row['volume_previsto'] + forecast_std),
-                "volume_lower_dow": max(0, int(row['volume_previsto'] - dow_std)),
-                "volume_upper_dow": int(row['volume_previsto'] + dow_std),
+                "volume_total": int(row['volume_previsto']),
+                "tmo_medio": int(row['tmo_previsto']),
+                "volume_lower": max(0, int(row['volume_previsto'] - forecast_std * scale_factor)),
+                "volume_upper": int(row['volume_previsto'] + forecast_std * scale_factor),
+                "volume_lower_dow": max(0, int(row['volume_previsto'] - dow_std * scale_factor)),
+                "volume_upper_dow": int(row['volume_previsto'] + dow_std * scale_factor),
                 "intervalos": intervalos
             })
-            
-        # Calcular DMM (Dia de Maior Movimento) e HMM (Hora de Maior Movimento) projetados
-        volume_projetado = df_pred['volume_previsto'].sum()
         
+        # Calcular DMM (Dia de Maior Movimento) e HMM (Hora de Maior Movimento) projetados
         import holidays
         br_holidays = holidays.Brazil()
         feriados = []
@@ -1254,6 +1433,18 @@ class CallCenterForecaster:
                 "curvas_distribuicao": self.distribution_curve,
                 "confidence_intervals": confidence_intervals,
                 "estimated_abandon_rate": round(est_abandon_rate * 100, 2),
+                # NOVO: Informações de blending e tendência
+                "blend_info": {
+                    "ml_volume_raw": int(volume_projetado_raw),
+                    "blended_volume": int(blended_volume),
+                    "adjustment_reason": blend_result.get('adjustment_reason', ''),
+                    "trend_direction": blend_result.get('trend_info', {}).get('trend_direction', 'estavel'),
+                    "trend_pct": blend_result.get('trend_info', {}).get('trend_pct', 0),
+                    "avg_recent_3m": blend_result.get('trend_info', {}).get('avg_recent', 0),
+                    "avg_per_bd_recent": blend_result.get('trend_info', {}).get('avg_per_bd', 0),
+                    "deviation_pct": blend_result.get('deviation_pct', 0),
+                    "n_business_days": n_bd_mes,
+                },
             }
         }
 
