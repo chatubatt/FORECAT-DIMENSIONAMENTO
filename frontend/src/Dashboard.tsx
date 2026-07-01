@@ -220,7 +220,7 @@ export default function Dashboard() {
   const [dimSelectedDay, setDimSelectedDay] = useState<string>(''); // Data selecionada para o dimensionamento
   const [dimShowConsolidated, setDimShowConsolidated] = useState<boolean>(true);
 
-  const [dimStrategy, setDimStrategy] = useState<SlaStrategy>('strict_daily');
+  const [dimStrategy, setDimStrategy] = useState<SlaStrategy>('monthly_avg');
   const [dimOpHours, setDimOpHours] = useState<OperatingHoursConfig>({
     weekdays: { start: '08:00', end: '20:00', closed: false },
     saturdays: { start: '09:00', end: '15:00', closed: false },
@@ -3458,9 +3458,7 @@ export default function Dashboard() {
                         onChange={e => setDimStrategy(e.target.value as SlaStrategy)}
                         className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white outline-none"
                       >
-                        <option value="strict_daily">Diário Estrito (Intervalo a Intervalo)</option>
                         <option value="monthly_avg">Média Ponderada do Mês (Trade-off DMM)</option>
-                        <option value="rule_80_20">Regra 80/20 (Limitar Picos)</option>
                       </select>
                     </div>
                     {dimStrategy === 'monthly_avg' && (
