@@ -4,11 +4,61 @@ from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.neighbors import KNeighborsRegressor
-from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.model_selection import train_test_split
 import datetime
 import calendar
 import holidays
+
+# Importação opcional do ExponentialSmoothing (statsmodels pode não estar instalado)
+try:
+    from statsmodels.tsa.holtwinters import ExponentialSmoothing
+    _HAS_EXP_SMOOTH = True
+except ImportError:
+    _HAS_EXP_SMOOTH = False
+
+
+class _ExponentialSmoothingWrapper:
+    """Wrapper para ExponentialSmoothing compatível com a interface fit/predict do sklearn.
+
+    O ExponentialSmoothing do statsmodels trabalha com séries temporais univariadas,
+    então este wrapper extrai o índice temporal e treina internamente.
+    """
+    def __init__(self):
+        self._model = None
+        self._last_values = None
+
+    def fit(self, X, y, **kwargs):
+        """Treina o modelo ExponentialSmoothing com a série temporal y."""
+        try:
+            self._model = ExponentialSmoothing(
+                y.values,
+                trend='add',
+                seasonal='add',
+                seasonal_periods=7,
+                damped_trend=True
+            ).fit()
+            self._last_values = y.values
+        except Exception:
+            # Se falhar (poucos dados, etc.), cria um modelo dummy de média
+            self._model = None
+            self._mean = float(y.mean())
+        return self
+
+    def predict(self, X):
+        """Prevê usando o modelo treinado. O número de previsões corresponde ao tamanho de X."""
+        n = len(X)
+        if self._model is not None:
+            try:
+                forecast = self._model.forecast(n)
+                return forecast.values if hasattr(forecast, 'values') else np.array(forecast)
+            except Exception:
+                pass
+        # Fallback: retorna a média dos últimos valores
+        if self._last_values is not None:
+            return np.full(n, np.mean(self._last_values[-7:]))
+        return np.full(n, getattr(self, '_mean', 0))
+
 
 class CallCenterForecaster:
     def __init__(self):
@@ -25,6 +75,11 @@ class CallCenterForecaster:
         self._ensemble_weights = []
         # Confidence interval support
         self._forecast_std = 0.0
+        # Residuais por dia da semana (para intervalos de confiança específicos)
+        self._residuals_by_dow = {}
+        self._std_by_dow = {}
+        # Armazenar dados diários para rolling evaluation e trend detection
+        self._df_daily_train = None
 
     def _extract_features(self, df, add_lags=False):
         """Extrai features de data para o modelo de ML.
@@ -109,6 +164,44 @@ class CallCenterForecaster:
             return 7  # Se não há feriado nos próximos 7 dias
             
         df_features['dias_ate_feriado'] = df_features['data'].apply(dias_ate_feriado)
+
+        # === NOVAS FEATURES DE CALENDÁRIO ===
+
+        # Feature: Semana de pagamento (dias 1-7 do mês — período comum de folha de pagamento no Brasil)
+        df_features['is_payday_week'] = np.where(
+            (df_features['data'].dt.day >= 1) & (df_features['data'].dt.day <= 7), 1, 0
+        )
+
+        # Feature: Progresso do mês (0.0 a 1.0, representando o avanço no mês)
+        df_features['mes_progress'] = df_features['data'].apply(
+            lambda x: x.day / calendar.monthrange(x.year, x.month)[1]
+        )
+
+        # Feature: Período pré-pago (dias 1-5 — padrão de recarga de créditos pré-pagos)
+        df_features['is_pre_pago'] = np.where(
+            (df_features['data'].dt.day >= 1) & (df_features['data'].dt.day <= 5), 1, 0
+        )
+
+        # Feature: Período pós-pago (dias 15-25 — ciclo de faturas pós-pagas)
+        df_features['is_pos_pago'] = np.where(
+            (df_features['data'].dt.day >= 15) & (df_features['data'].dt.day <= 25), 1, 0
+        )
+
+        # Feature: Dias desde o último feriado (0 a 7, capped em 7)
+        def dias_desde_feriado(data_obj):
+            for i in range(0, 8):
+                anterior = data_obj.date() - datetime.timedelta(days=i)
+                if anterior in br_holidays:
+                    return i
+            return 7  # Se não há feriado nos últimos 7 dias
+
+        df_features['dias_desde_ultimo_feriado'] = df_features['data'].apply(dias_desde_feriado)
+
+        # Feature: Início da quinzena (dia <= 15)
+        df_features['is_quinzena_inicio'] = np.where(df_features['data'].dt.day <= 15, 1, 0)
+
+        # Feature: Fim da quinzena (dia > 15)
+        df_features['is_quinzena_fim'] = np.where(df_features['data'].dt.day > 15, 1, 0)
         
         # Feature: Lag de volume (média dos últimos 7 dias) — apenas durante treino
         if add_lags and 'volume' in df_features.columns:
@@ -205,18 +298,24 @@ class CallCenterForecaster:
         else:
             df_features['tmo'] = df_features['tmo'].fillna(df_features['tmo'].median())
         
-        # Features compactas e comprovadas (including cyclical encoding)
+        # Features compactas e comprovadas (including cyclical encoding + novas features)
         FEATURE_COLS = [
             'dia_semana', 'dia_mes', 'mes', 'dia_util_mes',
             'is_feriado', 'is_vespera_feriado',
             'is_5o_dia_util', 'is_dia_20',
-            'dia_semana_sin', 'dia_semana_cos', 'mes_sin', 'mes_cos'
+            'dia_semana_sin', 'dia_semana_cos', 'mes_sin', 'mes_cos',
+            # Novas features de calendário
+            'is_payday_week', 'mes_progress', 'is_pre_pago', 'is_pos_pago',
+            'dias_desde_ultimo_feriado', 'is_quinzena_inicio', 'is_quinzena_fim'
         ]
         FEATURE_LABELS = [
             'Dia da Semana', 'Dia do Mês', 'Mês', 'Dia Útil do Mês',
             'É Feriado/FDS', 'Véspera Feriado',
             '5º Dia Útil (Pagamento)', 'Dia 20 (Vencimentos)',
-            'Dia Semana (sin)', 'Dia Semana (cos)', 'Mês (sin)', 'Mês (cos)'
+            'Dia Semana (sin)', 'Dia Semana (cos)', 'Mês (sin)', 'Mês (cos)',
+            # Labels das novas features
+            'Semana Pagamento (1-7)', 'Progresso do Mês', 'Pré-Pago (1-5)', 'Pós-Pago (15-25)',
+            'Dias Desde Último Feriado', 'Quinzena Início', 'Quinzena Fim'
         ]
         self._feature_cols = FEATURE_COLS
         
@@ -243,41 +342,103 @@ class CallCenterForecaster:
                 random_state=42, verbosity=0
             )
 
+        # Adicionar ExponentialSmoothing como candidato (se statsmodels disponível)
+        if _HAS_EXP_SMOOTH:
+            modelos_candidatos["ExponentialSmoothing"] = _ExponentialSmoothingWrapper()
+
         # Backtesting com TimeSeriesSplit (validação temporal)
         from sklearn.model_selection import TimeSeriesSplit
         
         model_scores = []
         n_splits = min(5, max(2, len(df_features) // 10))
         
+        # Armazenar validação detalhada por modelo
+        model_validation_detail = {}
+
         if len(df_features) > 15:
             tscv = TimeSeriesSplit(n_splits=n_splits)
             
             for name, model in modelos_candidatos.items():
                 maes = []
+                rmses = []
                 mapes = []
-                for train_idx, test_idx in tscv.split(X):
+                train_maes = []
+                val_maes = []
+                is_exp_smooth = name == "ExponentialSmoothing"
+
+                for fold_i, (train_idx, test_idx) in enumerate(tscv.split(X)):
                     X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
                     y_train = df_features['volume'].iloc[train_idx]
                     y_test = df_features['volume'].iloc[test_idx]
                     
                     model.fit(X_train, y_train)
                     preds = model.predict(X_test)
-                    maes.append(mean_absolute_error(y_test, preds))
+                    train_preds = model.predict(X_train)
+                    
+                    # MAE
+                    fold_mae = mean_absolute_error(y_test, preds)
+                    maes.append(fold_mae)
+                    
+                    # RMSE
+                    fold_rmse = np.sqrt(mean_squared_error(y_test, preds))
+                    rmses.append(fold_rmse)
+                    
+                    # MAPE
                     mape_fold = np.mean(np.abs((y_test - preds) / np.where(y_test == 0, 1e-8, y_test))) * 100
                     mapes.append(mape_fold)
+
+                    # Erro de treino vs validação (para detectar overfitting)
+                    train_mae = mean_absolute_error(y_train, train_preds)
+                    train_maes.append(train_mae)
+                    val_maes.append(fold_mae)
                 
                 mae_medio = np.mean(maes)
+                rmse_medio = np.mean(rmses)
                 mape_medio = np.mean(mapes)
+                train_mae_medio = np.mean(train_maes)
+                val_mae_medio = np.mean(val_maes)
+                # Gap treino-validação (overfitting detection)
+                overfit_gap = val_mae_medio - train_mae_medio
                 acuracidade = max(0.0, 100 - mape_medio)
                 
                 model_scores.append({
                     "modelo": name, 
                     "erro_mae": round(mae_medio, 2), 
+                    "erro_rmse": round(rmse_medio, 2),
+                    "mape": round(mape_medio, 2),
                     "acuracidade": round(acuracidade, 1)
                 })
+
+                # Detalhamento por fold para validação aprimorada
+                model_validation_detail[name] = {
+                    "mae_medio": round(mae_medio, 2),
+                    "rmse_medio": round(rmse_medio, 2),
+                    "mape_medio": round(mape_medio, 2),
+                    "train_mae_medio": round(train_mae_medio, 2),
+                    "val_mae_medio": round(val_mae_medio, 2),
+                    "overfit_gap": round(overfit_gap, 2),
+                    "overfit_risk": "alto" if overfit_gap > mae_medio * 0.3 else ("moderado" if overfit_gap > mae_medio * 0.15 else "baixo"),
+                    "folds": [
+                        {
+                            "fold": fold_i + 1,
+                            "mae": round(maes[fold_i], 2),
+                            "rmse": round(rmses[fold_i], 2),
+                            "mape": round(mapes[fold_i], 2)
+                        }
+                        for fold_i in range(len(maes))
+                    ]
+                }
         else:
             for name in modelos_candidatos:
-                model_scores.append({"modelo": name, "erro_mae": 0.0, "acuracidade": 0.0})
+                model_scores.append({"modelo": name, "erro_mae": 0.0, "erro_rmse": 0.0, "mape": 0.0, "acuracidade": 0.0})
+                model_validation_detail[name] = {
+                    "mae_medio": 0.0, "rmse_medio": 0.0, "mape_medio": 0.0,
+                    "train_mae_medio": 0.0, "val_mae_medio": 0.0,
+                    "overfit_gap": 0.0, "overfit_risk": "indeterminado", "folds": []
+                }
+
+        # Armazenar validação detalhada nos history_stats
+        self.history_stats['model_validation'] = model_validation_detail
 
         # Ensemble ponderado: top 3 modelos por MAE inverso
         model_scores.sort(key=lambda x: x["erro_mae"])
@@ -320,10 +481,27 @@ class CallCenterForecaster:
         self.tmo_model.fit(X, df_features['tmo'])
 
         # Calculate forecast standard deviation from training residuals (for confidence intervals)
+        # AGORA: calcular residuais POR DIA DA SEMANA para intervalos de confiança específicos
         y_pred_train = self._predict_volume(X)
         residuals = df_features['volume'].values - y_pred_train
         self._forecast_std = float(np.std(residuals))
         self.history_stats['forecast_std'] = round(self._forecast_std, 2)
+
+        # Residuais separados por dia da semana
+        self._residuals_by_dow = {}
+        self._std_by_dow = {}
+        for dow in range(7):
+            mask = df_features['dia_semana'].values == dow
+            if mask.sum() > 2:
+                dow_residuals = residuals[mask]
+                self._residuals_by_dow[dow] = dow_residuals
+                self._std_by_dow[dow] = float(np.std(dow_residuals))
+            else:
+                self._residuals_by_dow[dow] = np.array([])
+                self._std_by_dow[dow] = self._forecast_std  # Fallback para std global
+
+        # Armazenar dados diários de treino para rolling evaluation e trend detection
+        self._df_daily_train = df_features[['data', 'volume', 'tmo', 'dia_semana']].copy()
 
         # Armazenar metadados da metodologia para exibição no frontend
         tmo_tem_dado = not df_daily['tmo'].eq(240.0).all()
@@ -342,9 +520,11 @@ class CallCenterForecaster:
         validacao_tipo = f"TimeSeriesSplit ({n_splits} dobras temporais)" if len(df_features) > 15 else "Dados insuficientes para validação cruzada"
         
         ensemble_desc = f"Ensemble ponderado ({len(self._ensemble_models)} modelos)" if self._use_ensemble else campeao_nome
+        num_features = len(FEATURE_LABELS)
         sazonalidade_texto = (
-            f"A sazonalidade foi calculada cruzando 10 variáveis de calendário "
+            f"A sazonalidade foi calculada cruzando {num_features} variáveis de calendário "
             f"(dia da semana, dia do mês, mês, dia útil, feriado, véspera de feriado, "
+            f"semana de pagamento, progresso do mês, ciclo pré/pós-pago, "
             f"e encoding ciclico sin/cos para dia da semana e mês). "
             f"O algoritmo '{ensemble_desc}' mapeou as tendências históricas para projetar o volume."
         )
@@ -899,6 +1079,9 @@ class CallCenterForecaster:
                 row['volume_previsto'], curva_dia, row['tmo_previsto'],
                 tmo_per_interval=tmo_per_interval
             )
+
+            # Intervalos de confiança específicos por dia da semana
+            dow_std = self._std_by_dow.get(dia_semana, forecast_std)
                 
             resultados.append({
                 "data": row['data'].isoformat(),
@@ -906,6 +1089,8 @@ class CallCenterForecaster:
                 "tmo_medio": row['tmo_previsto'],
                 "volume_lower": max(0, int(row['volume_previsto'] - forecast_std)),
                 "volume_upper": int(row['volume_previsto'] + forecast_std),
+                "volume_lower_dow": max(0, int(row['volume_previsto'] - dow_std)),
+                "volume_upper_dow": int(row['volume_previsto'] + dow_std),
                 "intervalos": intervalos
             })
             
@@ -940,6 +1125,9 @@ class CallCenterForecaster:
                 row['volume_previsto'], curva_dia, row['tmo_previsto'],
                 tmo_per_interval=tmo_per_interval
             )
+
+            # Intervalos de confiança específicos por dia da semana
+            dow_std = self._std_by_dow.get(dia_semana, forecast_std)
                 
             resultados.append({
                 "data": row['data'].isoformat(),
@@ -947,6 +1135,8 @@ class CallCenterForecaster:
                 "tmo_medio": row['tmo_previsto'],
                 "volume_lower": max(0, int(row['volume_previsto'] - forecast_std)),
                 "volume_upper": int(row['volume_previsto'] + forecast_std),
+                "volume_lower_dow": max(0, int(row['volume_previsto'] - dow_std)),
+                "volume_upper_dow": int(row['volume_previsto'] + dow_std),
                 "intervalos": intervalos
             })
             
@@ -1066,6 +1256,380 @@ class CallCenterForecaster:
                 "estimated_abandon_rate": round(est_abandon_rate * 100, 2),
             }
         }
+
+    # =========================================================================
+    # NOVO: Previsão por intervalo com dimensionamento de agentes (Erlang)
+    # =========================================================================
+    def forecast_interval_level(self, year, month, celula="Todas"):
+        """Gera previsão detalhada por intervalo com dimensionamento de agentes.
+
+        Para cada dia do mês, prevê o volume diário, distribui nos intervalos,
+        e calcula agentes necessários via Erlang básico para cada intervalo.
+
+        Args:
+            year: Ano da previsão.
+            month: Mês da previsão (1-12).
+            celula: Nome da célula (padrão "Todas").
+
+        Returns:
+            Dict com 'dias': lista de dias, cada um com 'data', 'intervalos' detalhados
+            (volume, tmo, agents_needed, traffic_erlangs, occupancy_estimate).
+        """
+        if not self.is_trained:
+            raise ValueError("Modelo não treinado. Envie histórico primeiro.")
+
+        # Obter previsão mensal padrão
+        forecast_data = self.forecast_month(year, month)
+        dias = forecast_data['dias']
+
+        # Modelo secundário de regressão para ajustar distribuição por características do dia
+        # Treina regressão linear sobre padrões históricos de intervalo vs features do dia
+        interval_adjuster = None
+        if self._df_daily_train is not None and len(self._df_daily_train) > 30:
+            try:
+                interval_adjuster = self._train_interval_adjuster()
+            except Exception:
+                interval_adjuster = None
+
+        resultados = []
+        for dia_info in dias:
+            dt = datetime.date.fromisoformat(dia_info['data'])
+            dia_semana = dt.weekday()
+            total_vol = dia_info['volume_total']
+            tmo_medio = dia_info['tmo_medio']
+
+            intervalos_base = dia_info['intervalos']
+
+            # Se há modelo ajustador, ajustar a distribuição
+            if interval_adjuster is not None:
+                try:
+                    df_day = pd.DataFrame({'data': [dt]})
+                    day_features = self._extract_features(df_day)
+                    X_day = day_features[self._feature_cols]
+                    adjustment = interval_adjuster.predict(X_day)[0]
+                    # Ajustamento suave: blend entre curva original e ajustada
+                    blend_factor = 0.15  # 15% de peso para o ajuste
+                    for iv in intervalos_base:
+                        iv['volume'] = max(0, int(iv['volume'] * (1.0 - blend_factor + blend_factor * adjustment)))
+                except Exception:
+                    pass  # Fallback para curva original
+
+            # Calcular métricas de dimensionamento por intervalo
+            interval_seconds = 600  # 30 minutos = 600 segundos
+            shrinkage = 0.75  # Taxa de aderência padrão (75%)
+
+            enriched_intervals = []
+            for iv in intervalos_base:
+                vol = iv['volume']
+                tmo = iv['tmo']
+
+                # Tráfego em Erlangs
+                if interval_seconds > 0 and tmo > 0:
+                    traffic_erlangs = (vol / interval_seconds) * tmo
+                else:
+                    traffic_erlangs = 0.0
+
+                # Agentes necessários (Erlang básico: tráfego + margem)
+                # Regra simples: agents >= traffic_erlangs, arredondado para cima
+                agents_raw = traffic_erlangs
+                agents_after_shrinkage = max(1, int(np.ceil(agents_raw / shrinkage))) if agents_raw > 0 else 0
+
+                # Estimativa de ocupação
+                occupancy = min(1.0, traffic_erlangs / agents_after_shrinkage) if agents_after_shrinkage > 0 else 0.0
+
+                enriched_intervals.append({
+                    "intervalo": iv['intervalo'],
+                    "volume": iv['volume'],
+                    "tmo": iv['tmo'],
+                    "agents_needed": agents_after_shrinkage,
+                    "traffic_erlangs": round(traffic_erlangs, 2),
+                    "occupancy_estimate": round(occupancy, 4)
+                })
+
+            resultados.append({
+                "data": dia_info['data'],
+                "volume_total": total_vol,
+                "tmo_medio": tmo_medio,
+                "intervalos": enriched_intervals
+            })
+
+        return {"dias": resultados}
+
+    def _train_interval_adjuster(self):
+        """Treina modelo secundário de regressão linear para ajustar distribuição por intervalo.
+
+        Usa as features do dia para prever um fator de ajuste da curva intra-diária
+        baseado em padrões históricos.
+
+        Returns:
+            Modelo LinearRegression treinado ou None se dados insuficientes.
+        """
+        if self._df_daily_train is None or len(self._df_daily_train) < 30:
+            return None
+
+        df = self._df_daily_train.copy()
+        df['data'] = pd.to_datetime(df['data'], dayfirst=True)
+        df_feat = self._extract_features(df, add_lags=True)
+
+        # Feature adicional: razão entre volume do dia e a média do mesmo dia da semana
+        dow_means = df.groupby('dia_semana')['volume'].transform('mean')
+        df_feat['volume_ratio'] = df['volume'] / dow_means.replace(0, np.nan).fillna(1.0)
+
+        X = df_feat[self._feature_cols + ['volume_ratio']]
+        y = df_feat['volume_ratio']  # Prever o próprio ratio como ajuste
+
+        model = Ridge(alpha=1.0)
+        model.fit(X, y)
+        return model
+
+    # =========================================================================
+    # NOVO: Detecção de Tendências
+    # =========================================================================
+    def detect_trends(self):
+        """Analisa o histórico mensal para detectar tendências de volume.
+
+        Returns:
+            Dict com: direction, growth_rate, seasonal_pattern, recommendation.
+            Retorna None se o modelo não estiver treinado ou dados insuficientes.
+        """
+        if not self.is_trained:
+            return None
+
+        monthly_history = self.history_stats.get('monthly_history', [])
+        if not monthly_history or len(monthly_history) < 3:
+            return {
+                "direction": "indeterminado",
+                "growth_rate": 0.0,
+                "seasonal_pattern": {},
+                "recommendation": "Dados históricos insuficientes para análise de tendência (mínimo 3 meses)."
+            }
+
+        # Extrair volumes mensais em ordem cronológica
+        volumes = [m['volume'] for m in monthly_history]
+        meses_labels = [m['ano_mes'] for m in monthly_history]
+
+        # Calcular taxa de crescimento mês-a-mês (média dos últimos N meses)
+        growth_rates = []
+        for i in range(1, len(volumes)):
+            if volumes[i - 1] > 0:
+                rate = (volumes[i] - volumes[i - 1]) / volumes[i - 1]
+                growth_rates.append(rate)
+
+        if growth_rates:
+            avg_growth = np.mean(growth_rates)
+            # Usar os últimos 3 meses para tendência mais recente
+            recent_growth = np.mean(growth_rates[-3:]) if len(growth_rates) >= 3 else avg_growth
+        else:
+            avg_growth = 0.0
+            recent_growth = 0.0
+
+        # Determinar direção
+        if recent_growth > 0.03:
+            direction = "crescente"
+        elif recent_growth < -0.03:
+            direction = "decrescente"
+        else:
+            direction = "estavel"
+
+        # Identificar padrão sazonal (mês com maior/menor volume médio)
+        monthly_avg = {}
+        for m in monthly_history:
+            mes_num = int(m['ano_mes'].split('-')[1])
+            if mes_num not in monthly_avg:
+                monthly_avg[mes_num] = []
+            monthly_avg[mes_num].append(m['volume'])
+
+        seasonal_pattern = {}
+        meses_nomes = {
+            1: 'Jan', 2: 'Fev', 3: 'Mar', 4: 'Abr', 5: 'Mai', 6: 'Jun',
+            7: 'Jul', 8: 'Ago', 9: 'Set', 10: 'Out', 11: 'Nov', 12: 'Dez'
+        }
+
+        for mes_num in sorted(monthly_avg.keys()):
+            avg_vol = np.mean(monthly_avg[mes_num])
+            seasonal_pattern[meses_nomes.get(mes_num, str(mes_num))] = round(avg_vol, 1)
+
+        # Identificar meses consistentemente altos e baixos
+        if len(monthly_avg) >= 6:
+            avg_geral = np.mean([np.mean(v) for v in monthly_avg.values()])
+            meses_altos = []
+            meses_baixos = []
+            for mes_num, vols in monthly_avg.items():
+                avg_m = np.mean(vols)
+                if avg_m > avg_geral * 1.1:
+                    meses_altos.append(meses_nomes.get(mes_num, str(mes_num)))
+                elif avg_m < avg_geral * 0.9:
+                    meses_baixos.append(meses_nomes.get(mes_num, str(mes_num)))
+        else:
+            meses_altos = []
+            meses_baixos = []
+
+        # Gerar recomendação
+        if direction == "crescente":
+            recommendation = (
+                f"Tendência de CRESCIMENTO detectada (taxa recente: {recent_growth * 100:+.1f}% a.m.). "
+                f"Considere planejar aumento gradativo de quadro. "
+            )
+            if meses_altos:
+                recommendation += f"Meses historicamente acima da média: {', '.join(meses_altos)}. "
+        elif direction == "decrescente":
+            recommendation = (
+                f"Tendência de QUEDA detectada (taxa recente: {recent_growth * 100:+.1f}% a.m.). "
+                f"Avaliar possibilidade de otimização de escala. "
+            )
+            if meses_baixos:
+                recommendation += f"Meses historicamente abaixo da média: {', '.join(meses_baixos)}. "
+        else:
+            recommendation = (
+                f"Volume ESTÁVEL (variação recente: {recent_growth * 100:+.1f}% a.m.). "
+                f"Manter o dimensionamento atual com ajustes sazonais. "
+            )
+
+        if meses_altos:
+            recommendation += f"Periodos de pico sazonal: {', '.join(meses_altos)}."
+        if meses_baixos:
+            recommendation += f" Periodos de baixa sazonal: {', '.join(meses_baixos)}."
+
+        return {
+            "direction": direction,
+            "growth_rate": round(recent_growth * 100, 2),
+            "growth_rate_avg": round(avg_growth * 100, 2),
+            "seasonal_pattern": seasonal_pattern,
+            "meses_pico": meses_altos,
+            "meses_baixa": meses_baixos,
+            "recommendation": recommendation.strip(),
+            "n_meses_analisados": len(monthly_history)
+        }
+
+    # =========================================================================
+    # NOVO: Avaliação Rolling da Previsão
+    # =========================================================================
+    def rolling_forecast_eval(self, horizon_days=7):
+        """Simula uma previsão rolling sobre os últimos dias do treino.
+
+        Para cada dia no período de teste, treina com os dados anteriores e prevê esse dia.
+        Calcula MAPE, MAE e viés (bias) para avaliar a qualidade real da previsão.
+
+        Args:
+            horizon_days: Número de dias finais do treino para usar como teste.
+
+        Returns:
+            Dict com mape, mae, bias, detalhes por dia e métricas agregadas.
+        """
+        if not self.is_trained or self._df_daily_train is None:
+            return None
+
+        df = self._df_daily_train.copy()
+        df['data'] = pd.to_datetime(df['data'], dayfirst=True)
+        df = df.sort_values('data').reset_index(drop=True)
+
+        n_total = len(df)
+        if n_total < horizon_days + 30:
+            return {
+                "status": "dados_insuficientes",
+                "message": f"Necessário pelo menos {horizon_days + 30} dias de treino para avaliação rolling. Disponível: {n_total}.",
+                "mape": None, "mae": None, "bias": None, "detalhes": []
+            }
+
+        # Dividir: treino = tudo exceto os últimos horizon_days
+        df_test = df.iloc[-horizon_days:].copy()
+        df_train_base = df.iloc[:-horizon_days].copy()
+
+        detalhes = []
+        erros_absolutos = []
+        erros_pct = []
+        diferencas = []  # predito - real (para calcular viés)
+
+        for i in range(len(df_test)):
+            dia_teste = df_test.iloc[i]
+            data_teste = dia_teste['data']
+            volume_real = dia_teste['volume']
+
+            # Combinar treino base + dias de teste anteriores
+            df_train_roll = pd.concat([df_train_base, df_test.iloc[:i]], ignore_index=True)
+
+            if len(df_train_roll) < 15:
+                continue
+
+            try:
+                # Extrair features e treinar modelo rápido (RandomForest com poucas árvores)
+                df_train_features = self._extract_features(df_train_roll, add_lags=False)
+
+                # Remover outliers simples
+                X_train = df_train_features[self._feature_cols]
+                y_train = df_train_features['volume'].values
+
+                # Treinar modelo leve
+                model = RandomForestRegressor(n_estimators=50, random_state=42, max_depth=6)
+                model.fit(X_train, y_train)
+
+                # Prever o dia de teste
+                df_day = pd.DataFrame({'data': [data_teste]})
+                df_day_feat = self._extract_features(df_day)
+                X_day = df_day_feat[self._feature_cols]
+                volume_pred = int(model.predict(X_day)[0])
+
+                # Garantir não-negativo
+                volume_pred = max(0, volume_pred)
+
+                erro_abs = abs(volume_real - volume_pred)
+                erro_pct = (erro_abs / volume_real * 100) if volume_real > 0 else 0.0
+                diferenca = volume_pred - volume_real  # positivo = superestimou
+
+                erros_absolutos.append(erro_abs)
+                erros_pct.append(erro_pct)
+                diferencas.append(diferenca)
+
+                detalhes.append({
+                    "data": data_teste.strftime('%Y-%m-%d'),
+                    "volume_real": int(volume_real),
+                    "volume_predito": volume_pred,
+                    "erro_absoluto": erro_abs,
+                    "erro_pct": round(erro_pct, 2),
+                    "diferenca": int(diferenca)
+                })
+
+            except Exception:
+                continue
+
+        if not detalhes:
+            return {
+                "status": "falha",
+                "message": "Não foi possível calcular a avaliação rolling.",
+                "mape": None, "mae": None, "bias": None, "detalhes": []
+            }
+
+        mape = round(np.mean(erros_pct), 2)
+        mae = round(np.mean(erros_absolutos), 2)
+        bias = round(np.mean(diferencas), 2)  # Positivo = tendência a superestimar
+        bias_pct = round((bias / np.mean([d['volume_real'] for d in detalhes])) * 100, 2) if detalhes else 0.0
+
+        # Classificar qualidade
+        if mape < 10:
+            qualidade = "excelente"
+        elif mape < 20:
+            qualidade = "bom"
+        elif mape < 30:
+            qualidade = "aceitavel"
+        else:
+            qualidade = "precisa_melhorar"
+
+        return {
+            "status": "ok",
+            "horizon_days": horizon_days,
+            "dias_avaliados": len(detalhes),
+            "mape": mape,
+            "mae": mae,
+            "rmse": round(np.sqrt(np.mean([e ** 2 for e in erros_absolutos])), 2),
+            "bias": bias,
+            "bias_pct": bias_pct,
+            "qualidade": qualidade,
+            "bias_interpretacao": (
+                "superestima" if bias > 0 else ("subestima" if bias < 0 else "neutro")
+            ),
+            "detalhes": detalhes
+        }
+
 
 class CallCenterForecasterManager:
     def __init__(self):

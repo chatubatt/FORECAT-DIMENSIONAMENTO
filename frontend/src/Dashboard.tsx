@@ -1,8 +1,8 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, BarChart, Bar, ComposedChart, Area } from 'recharts';
 import { UploadCloud, Activity, Clock, CalendarDays, TrendingUp, Users } from 'lucide-react';
-import { evaluateErlangConfig, type SlaStrategy, type OperatingHoursConfig, type ErlangResult, calculateCostEstimate, calculateSLASensitivity, type SensitivityResult, estimateAbandonRate, calcErlangB } from './utils/erlang';
-import { calculateShifts, type ShiftType, AVAILABLE_SHIFTS, allocateShifts612_812, type ShiftAllocationResult, compareShiftCombinations, type ShiftCombinationCost } from './utils/shifts';
+import { evaluateErlangConfig, type SlaStrategy, type OperatingHoursConfig, type ErlangResult, calculateCostEstimate, calculateSLASensitivity, type SensitivityResult, estimateAbandonRate, calcErlangB, calculateShrinkageBreakdown, type ShrinkageResult, calculateScenarioImpact, type ScenarioResult, generateOccupancyAnalysis, type OccupancyAnalysis, calculateErlangA, type ErlangAResult, exportToCSV, exportToJSON } from './utils/erlang';
+import { calculateShifts, type ShiftType, AVAILABLE_SHIFTS, allocateShifts612_812, type ShiftAllocationResult, compareShiftCombinations, type ShiftCombinationCost, generateRotationCalendar, type RotationCalendar, calculateShiftEfficiency, type ShiftEfficiencyMetric, optimizeShiftMix, type OptimizationResult, isBrazilianHoliday } from './utils/shifts';
 
 interface IntervalForecast {
   intervalo: string;
@@ -179,7 +179,7 @@ export default function Dashboard() {
   const [forecastData, setForecastData] = useState<DailyForecast[]>([]);
   const [stats, setStats] = useState<HistoryStats | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'forecast' | 'calendario' | 'historico' | 'baseline' | 'previsao_mensal' | 'dimensionamento' | 'metodologia' | 'cenarios'>('forecast');
+  const [activeTab, setActiveTab] = useState<'forecast' | 'calendario' | 'historico' | 'baseline' | 'previsao_mensal' | 'dimensionamento' | 'metodologia' | 'cenarios' | 'shrinkage' | 'whatif' | 'rotacao'>('forecast');
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
   const [flutuacao, setFlutuacao] = useState<number>(0);
   const [incremento, setIncremento] = useState<number>(0);
@@ -267,6 +267,32 @@ export default function Dashboard() {
   const [scenarios, setScenarios] = useState<SavedScenario[]>([]);
   const [scenarioName, setScenarioName] = useState('');
   const [showSavePrompt, setShowSavePrompt] = useState(false);
+
+  // Shrinkage Tab States
+  const [shrinkBaseAgents, setShrinkBaseAgents] = useState<number>(100);
+  const [shrinkVacation, setShrinkVacation] = useState<number>(8.0);
+  const [shrinkSickLeave, setShrinkSickLeave] = useState<number>(3.0);
+  const [shrinkTraining, setShrinkTraining] = useState<number>(2.0);
+  const [shrinkBreaks, setShrinkBreaks] = useState<number>(5.0);
+  const [shrinkMeetings, setShrinkMeetings] = useState<number>(1.5);
+  const [shrinkAbsenteeism, setShrinkAbsenteeism] = useState<number>(2.0);
+  const [shrinkOther, setShrinkOther] = useState<number>(0.0);
+
+  // What-If Tab States
+  const [whatifBaseVolume, setWhatifBaseVolume] = useState<number>(10000);
+  const [whatifTmo, setWhatifTmo] = useState<number>(240);
+  const [whatifIntervalSec, setWhatifIntervalSec] = useState<number>(600);
+  const [whatifTargetSla, setWhatifTargetSla] = useState<number>(80);
+  const [whatifSlaTime, setWhatifSlaTime] = useState<number>(20);
+  const [whatifShrinkage, setWhatifShrinkage] = useState<number>(18.47);
+  const [whatifResults, setWhatifResults] = useState<ScenarioResult[]>([]);
+
+  // Rotation Tab States
+  const [rotYear, setRotYear] = useState<number>(new Date().getFullYear());
+  const [rotMonth, setRotMonth] = useState<number>(new Date().getMonth() + 1);
+  const [rotHC, setRotHC] = useState<number>(50);
+  const [rotShiftTypes, setRotShiftTypes] = useState<ShiftType[]>(['06:20', '08:12']);
+  const [rotCalendar, setRotCalendar] = useState<RotationCalendar | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('forecast_scenarios');
@@ -2000,6 +2026,24 @@ export default function Dashboard() {
             className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'cenarios' ? 'border-emerald-500 text-emerald-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
           >
             Cenários Salvos
+          </button>
+          <button
+            onClick={() => setActiveTab('shrinkage')}
+            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'shrinkage' ? 'border-rose-500 text-rose-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+          >
+            Shrinkage
+          </button>
+          <button
+            onClick={() => setActiveTab('whatif')}
+            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'whatif' ? 'border-cyan-500 text-cyan-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+          >
+            What-If
+          </button>
+          <button
+            onClick={() => setActiveTab('rotacao')}
+            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'rotacao' ? 'border-violet-500 text-violet-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+          >
+            Rotação
           </button>
         </div>
 
@@ -4317,6 +4361,384 @@ export default function Dashboard() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ==================== SHRINKAGE TAB ==================== */}
+        {activeTab === 'shrinkage' && (() => {
+          const shrinkResult = useMemo(() => calculateShrinkageBreakdown(shrinkBaseAgents, {
+            'Férias': shrinkVacation, 'Licença médica': shrinkSickLeave, 'Treinamento': shrinkTraining,
+            'Pausas': shrinkBreaks, 'Reuniões': shrinkMeetings, 'Absentismo': shrinkAbsenteeism, 'Outros': shrinkOther
+          }), [shrinkBaseAgents, shrinkVacation, shrinkSickLeave, shrinkTraining, shrinkBreaks, shrinkMeetings, shrinkAbsenteeism, shrinkOther]);
+          return (
+            <div className="space-y-6">
+              <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+                <h2 className="text-xl font-bold text-rose-400 flex items-center gap-2 mb-6">
+                  <Users className="w-5 h-5" /> Calculadora de Shrinkage
+                </h2>
+                <p className="text-slate-400 mb-6">Configure os componentes de shrinkage para entender o impacto real no dimensionamento de pessoas. O shrinkage representa a diferença entre agentes pagos e agentes efetivamente disponíveis para atendimento.</p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                  <div className="col-span-full">
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Agentes Necessários (antes do shrinkage)</label>
+                    <input type="number" value={shrinkBaseAgents} onChange={e => setShrinkBaseAgents(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white text-lg font-bold" />
+                  </div>
+                  {[
+                    { label: 'Férias (%)', value: shrinkVacation, setter: setShrinkVacation, desc: 'Licença remunerada anual' },
+                    { label: 'Afastamento Saúde (%)', value: shrinkSickLeave, setter: setShrinkSickLeave, desc: 'Atestados médicos e licenças saúde' },
+                    { label: 'Treinamento (%)', value: shrinkTraining, setter: setShrinkTraining, desc: 'Capacitação e desenvolvimento' },
+                    { label: 'Pausas (%)', value: shrinkBreaks, setter: setShrinkBreaks, desc: 'NR17, café, banheiro' },
+                    { label: 'Reuniões (%)', value: shrinkMeetings, setter: setShrinkMeetings, desc: 'Reuniões operacionais e coaching' },
+                    { label: 'Absenteísmo (%)', value: shrinkAbsenteeism, setter: setShrinkAbsenteeism, desc: 'Faltas não justificadas' },
+                    { label: 'Outros (%)', value: shrinkOther, setter: setShrinkOther, desc: 'Outras ausências programadas' },
+                  ].map(item => (
+                    <div key={item.label}>
+                      <label className="block text-sm font-medium text-slate-300 mb-1">{item.label}</label>
+                      <input type="number" step="0.5" min="0" max="50" value={item.value} onChange={e => item.setter(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white" />
+                      <p className="text-xs text-slate-500 mt-1">{item.desc}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Shrinkage Results */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700 text-center">
+                    <p className="text-sm text-slate-400">Shrinkage Total</p>
+                    <p className="text-3xl font-bold text-rose-400">{shrinkResult.totalShrinkagePercent.toFixed(1)}%</p>
+                  </div>
+                  <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700 text-center">
+                    <p className="text-sm text-slate-400">Agentes Necessários (com shrinkage)</p>
+                    <p className="text-3xl font-bold text-amber-400">{shrinkResult.requiredWithShrinkage}</p>
+                  </div>
+                  <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700 text-center">
+                    <p className="text-sm text-slate-400">Eficiência do Tempo Pago</p>
+                    <p className="text-3xl font-bold text-emerald-400">{(100 - shrinkResult.efficiencyLoss).toFixed(1)}%</p>
+                  </div>
+                </div>
+
+                {/* Breakdown Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-700">
+                        <th className="text-left py-3 px-4 text-slate-400">Componente</th>
+                        <th className="text-center py-3 px-4 text-slate-400">%</th>
+                        <th className="text-center py-3 px-4 text-slate-400">Agentes Ausentes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shrinkResult.components.map((c, i) => (
+                        <tr key={i} className="border-b border-slate-800 hover:bg-slate-800/50">
+                          <td className="py-3 px-4 text-white">{c.name}</td>
+                          <td className="py-3 px-4 text-center text-rose-300 font-medium">{c.percent.toFixed(1)}%</td>
+                          <td className="py-3 px-4 text-center text-amber-300 font-medium">{c.agentsAbsent}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="border-t-2 border-slate-600 font-bold">
+                      <tr>
+                        <td className="py-3 px-4 text-white">TOTAL</td>
+                        <td className="py-3 px-4 text-center text-rose-400">{shrinkResult.totalShrinkagePercent.toFixed(1)}%</td>
+                        <td className="py-3 px-4 text-center text-amber-400">+{shrinkResult.additionalAgents} agentes</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <button onClick={() => exportToCSV(shrinkResult.components.map(c => ({
+                  Componente: c.name, Percentual: c.percent, 'Agentes Ausentes': c.agentsAbsent
+                })), `shrinkage_${shrinkBaseAgents}agentes.csv`)}
+                  className="mt-4 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                  Exportar CSV
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ==================== WHAT-IF TAB ==================== */}
+        {activeTab === 'whatif' && (
+          <div className="space-y-6">
+            <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+              <h2 className="text-xl font-bold text-cyan-400 flex items-center gap-2 mb-6">
+                <TrendingUp className="w-5 h-5" /> Análise de Cenários (What-If)
+              </h2>
+              <p className="text-slate-400 mb-6">Simule diferentes cenários operacionais para entender o impacto no dimensionamento. Ideal para planejamento de contingência eCapacity planning.</p>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Volume Base (por intervalo)</label>
+                  <input type="number" value={whatifBaseVolume} onChange={e => setWhatifBaseVolume(parseInt(e.target.value) || 0)}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">TMO (seg)</label>
+                  <input type="number" value={whatifTmo} onChange={e => setWhatifTmo(parseInt(e.target.value) || 1)}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Intervalo (seg)</label>
+                  <input type="number" value={whatifIntervalSec} onChange={e => setWhatifIntervalSec(parseInt(e.target.value) || 1)}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">SLA Alvo (%)</label>
+                  <input type="number" value={whatifTargetSla} onChange={e => setWhatifTargetSla(parseFloat(e.target.value) || 1)}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Tempo SLA (seg)</label>
+                  <input type="number" value={whatifSlaTime} onChange={e => setWhatifSlaTime(parseInt(e.target.value) || 1)}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Shrinkage (%)</label>
+                  <input type="number" step="0.01" value={whatifShrinkage} onChange={e => setWhatifShrinkage(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+                </div>
+              </div>
+
+              <button onClick={() => {
+                const results = calculateScenarioImpact(
+                  whatifBaseVolume, whatifTmo, whatifIntervalSec,
+                  whatifTargetSla, whatifSlaTime, whatifShrinkage / 100,
+                  [
+                    { name: 'Pico Extremo (+30%)', volumeChange: 30, tmoChange: 0 },
+                    { name: 'Pico Moderado (+20%)', volumeChange: 20, tmoChange: 0 },
+                    { name: 'Operação Normal', volumeChange: 0, tmoChange: 0 },
+                    { name: 'Baixa Demanda (-20%)', volumeChange: -20, tmoChange: 0 },
+                    { name: 'Crise (+30% vol, +15% TMO)', volumeChange: 30, tmoChange: 15 },
+                    { name: 'TMO Alto (+25% TMO)', volumeChange: 0, tmoChange: 25 },
+                    { name: 'Black Friday (+50% vol)', volumeChange: 50, tmoChange: -10 },
+                  ]
+                );
+                setWhatifResults(results);
+              }}
+                className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-colors mb-6">
+                Simular Cenários
+              </button>
+
+              {whatifResults.length > 0 && (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-700">
+                          <th className="text-left py-3 px-3 text-slate-400">Cenário</th>
+                          <th className="text-center py-3 px-3 text-slate-400">Volume</th>
+                          <th className="text-center py-3 px-3 text-slate-400">TMO</th>
+                          <th className="text-center py-3 px-3 text-slate-400">Erlangs</th>
+                          <th className="text-center py-3 px-3 text-slate-400">PA Base</th>
+                          <th className="text-center py-3 px-3 text-slate-400">PA c/ Shrinkage</th>
+                          <th className="text-center py-3 px-3 text-slate-400">SLA</th>
+                          <th className="text-center py-3 px-3 text-slate-400">Ocupação</th>
+                          <th className="text-center py-3 px-3 text-slate-400">ASA (s)</th>
+                          <th className="text-center py-3 px-3 text-slate-400">Delta Custo</th>
+                          <th className="text-center py-3 px-3 text-slate-400">Risco</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {whatifResults.map((r, i) => (
+                          <tr key={i} className={`border-b border-slate-800 hover:bg-slate-800/50 ${r.riskLevel === 'Crítico' ? 'bg-red-900/20' : r.riskLevel === 'Alto' ? 'bg-amber-900/20' : ''}`}>
+                            <td className="py-3 px-3 text-white font-medium">{r.name}</td>
+                            <td className="py-3 px-3 text-center text-slate-300">{r.volume.toLocaleString()}</td>
+                            <td className="py-3 px-3 text-center text-slate-300">{r.tmo}s</td>
+                            <td className="py-3 px-3 text-center text-blue-300">{r.erlangs.toFixed(1)}</td>
+                            <td className="py-3 px-3 text-center text-white font-bold">{r.baseAgents}</td>
+                            <td className="py-3 px-3 text-center text-amber-400 font-bold">{r.requiredAgents}</td>
+                            <td className={`py-3 px-3 text-center font-medium ${r.sla >= 80 ? 'text-emerald-400' : r.sla >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{r.sla.toFixed(1)}%</td>
+                            <td className={`py-3 px-3 text-center ${r.occupancy > 90 ? 'text-red-400' : r.occupancy > 80 ? 'text-amber-400' : 'text-emerald-400'}`}>{r.occupancy.toFixed(1)}%</td>
+                            <td className="py-3 px-3 text-center text-slate-300">{r.asa.toFixed(0)}s</td>
+                            <td className={`py-3 px-3 text-center font-medium ${r.costDelta > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                              {r.costDelta > 0 ? '+' : ''}{r.costDelta.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3 text-center">
+                              <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                r.riskLevel === 'Baixo' ? 'bg-emerald-900/50 text-emerald-400' :
+                                r.riskLevel === 'Médio' ? 'bg-amber-900/50 text-amber-400' :
+                                r.riskLevel === 'Alto' ? 'bg-orange-900/50 text-orange-400' :
+                                'bg-red-900/50 text-red-400'
+                              }`}>{r.riskLevel}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* What-If Visualization */}
+                  <div className="mt-6 bg-slate-900/50 rounded-xl p-6">
+                    <h3 className="text-lg font-bold text-cyan-400 mb-4">Comparativo Visual</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={whatifResults.map(r => ({ name: r.name, agentes: r.requiredAgents, sla: r.sla, ocupacao: r.occupancy }))}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                        <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 10 }} angle={-30} textAnchor="end" height={80} />
+                        <YAxis tick={{ fill: '#94a3b8' }} />
+                        <RechartsTooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} />
+                        <Legend />
+                        <Bar dataKey="agentes" fill="#818cf8" name="PA Necessários" />
+                        <Bar dataKey="sla" fill="#34d399" name="SLA %" />
+                        <Bar dataKey="ocupacao" fill="#fbbf24" name="Ocupação %" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <button onClick={() => exportToCSV(whatifResults.map(r => ({
+                    Cenário: r.name, Volume: r.volume, TMO: r.tmo, Erlangs: r.erlangs,
+                    'PA Base': r.baseAgents, 'PA c/ Shrinkage': r.requiredAgents,
+                    'SLA (%)': r.sla, 'Ocupação (%)': r.occupancy, 'ASA (s)': r.asa,
+                    'Delta Custo': r.costDelta, Risco: r.riskLevel
+                  })), 'whatif_analysis.csv')}
+                    className="mt-4 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    Exportar Análise CSV
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== ROTATION TAB ==================== */}
+        {activeTab === 'rotacao' && (
+          <div className="space-y-6">
+            <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
+              <h2 className="text-xl font-bold text-violet-400 flex items-center gap-2 mb-6">
+                <CalendarDays className="w-5 h-5" /> Escala de Rotação Mensal
+              </h2>
+              <p className="text-slate-400 mb-6">Gere uma escala de rotação mensal com distribuição automática de turnos, folgas rotativas e respeito a feriados nacionais. Cada operador recebe 1 dia de folga por semana.</p>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Ano</label>
+                  <input type="number" value={rotYear} onChange={e => setRotYear(parseInt(e.target.value) || 2025)}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Mês</label>
+                  <select value={rotMonth} onChange={e => setRotMonth(parseInt(e.target.value))}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white">
+                    {Array.from({length: 12}, (_, i) => <option key={i+1} value={i+1}>{new Date(2025, i).toLocaleString('pt-BR', {month: 'long'})}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Headcount Total</label>
+                  <input type="number" value={rotHC} onChange={e => setRotHC(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Turnos</label>
+                  <div className="flex flex-wrap gap-1">
+                    {AVAILABLE_SHIFTS.filter(s => s.recommended || ['12x36', '04:00'].includes(s.type)).map(s => (
+                      <button key={s.type} onClick={() => setRotShiftTypes(prev =>
+                        prev.includes(s.type) ? prev.filter(t => t !== s.type) : [...prev, s.type]
+                      )}
+                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                          rotShiftTypes.includes(s.type) ? 'bg-violet-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                        }`}>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <button onClick={() => {
+                const cal = generateRotationCalendar(rotYear, rotMonth, rotHC, rotShiftTypes);
+                setRotCalendar(cal);
+              }}
+                className="bg-violet-600 hover:bg-violet-500 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-colors mb-6">
+                Gerar Escala de Rotação
+              </button>
+
+              {rotCalendar && (
+                <>
+                  {/* Summary Cards */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700 text-center">
+                      <p className="text-sm text-slate-400">HC Médio/Dia</p>
+                      <p className="text-2xl font-bold text-violet-400">{rotCalendar.summary.avgDailyHC}</p>
+                    </div>
+                    <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700 text-center">
+                      <p className="text-sm text-slate-400">HC Pico</p>
+                      <p className="text-2xl font-bold text-amber-400">{rotCalendar.summary.peakDayHC}</p>
+                    </div>
+                    <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700 text-center">
+                      <p className="text-sm text-slate-400">Dias Úteis</p>
+                      <p className="text-2xl font-bold text-emerald-400">{rotCalendar.summary.workingDays}</p>
+                    </div>
+                    <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700 text-center">
+                      <p className="text-sm text-slate-400">Feriados</p>
+                      <p className="text-2xl font-bold text-rose-400">{rotCalendar.summary.holidays}</p>
+                    </div>
+                  </div>
+
+                  {/* Shift Distribution */}
+                  <div className="mb-6">
+                    <h3 className="text-sm font-bold text-slate-300 mb-2">Distribuição por Turno</h3>
+                    <div className="flex gap-3 flex-wrap">
+                      {Object.entries(rotCalendar.summary.shiftDistribution).map(([type, count]) => {
+                        const shift = AVAILABLE_SHIFTS.find(s => s.type === type);
+                        return (
+                          <div key={type} className="bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-2">
+                            <p className="text-xs text-slate-400">{shift?.label || type}</p>
+                            <p className="text-lg font-bold text-violet-300">{count as number}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Calendar Grid */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-700">
+                          <th className="text-left py-2 px-2 text-slate-400">Data</th>
+                          <th className="text-left py-2 px-2 text-slate-400">Dia</th>
+                          <th className="text-center py-2 px-2 text-slate-400">Status</th>
+                          <th className="text-center py-2 px-2 text-slate-400">Turnos</th>
+                          <th className="text-center py-2 px-2 text-slate-400">HC Dia</th>
+                          <th className="text-left py-2 px-2 text-slate-400">Obs</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rotCalendar.days.map((day, i) => (
+                          <tr key={i} className={`border-b border-slate-800 ${day.isHoliday ? 'bg-red-900/10' : day.isWeekend ? 'bg-slate-900/30' : ''}`}>
+                            <td className="py-2 px-2 text-white font-medium">{day.date}</td>
+                            <td className="py-2 px-2 text-slate-400">{day.dayName}</td>
+                            <td className="py-2 px-2 text-center">
+                              {day.isHoliday ? <span className="text-red-400 font-bold">Feriado</span> :
+                               day.isWeekend ? <span className="text-amber-400">FDS</span> :
+                               <span className="text-emerald-400">Útil</span>}
+                            </td>
+                            <td className="py-2 px-2 text-center">
+                              {day.shifts.length > 0 ? day.shifts.map((s, j) => (
+                                <span key={j} className="inline-block bg-violet-900/50 text-violet-300 px-1.5 py-0.5 rounded mr-1 mb-0.5">
+                                  {s.shiftType}x{s.count}
+                                </span>
+                              )) : <span className="text-slate-600">-</span>}
+                            </td>
+                            <td className="py-2 px-2 text-center text-white font-medium">{day.totalAgents}</td>
+                            <td className="py-2 px-2 text-slate-500">{day.notes}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <button onClick={() => exportToCSV(rotCalendar.days.map(d => ({
+                    Data: d.date, Dia: d.dayName, Feriado: d.isHoliday ? 'Sim' : 'Não',
+                    'HC Total': d.totalAgents, Turnos: d.shifts.map(s => `${s.shiftType}x${s.count}`).join(', '),
+                    Observação: d.notes
+                  })), `rotacao_${rotYear}_${String(rotMonth).padStart(2,'0')}.csv`)}
+                    className="mt-4 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    Exportar Escala CSV
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         )}
       </>

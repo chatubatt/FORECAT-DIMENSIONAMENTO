@@ -450,3 +450,533 @@ export function compareShiftCombinations(
     };
   }).sort((a, b) => a.estimatedCost - b.estimatedCost);
 }
+
+// ===========================================================================
+// FERIADOS NACIONAIS BRASILEIROS 2024-2026
+// ===========================================================================
+
+export const BRAZILIAN_HOLIDAYS_2024_2026: Record<string, string[]> = {
+  '2024': [
+    '2024-01-01', '2024-02-12', '2024-02-13', '2024-03-29',
+    '2024-04-21', '2024-05-01', '2024-05-30', '2024-09-07',
+    '2024-10-12', '2024-11-02', '2024-11-15', '2024-12-25'
+  ],
+  '2025': [
+    '2025-01-01', '2025-03-03', '2025-03-04', '2025-04-18',
+    '2025-04-21', '2025-05-01', '2025-06-19', '2025-09-07',
+    '2025-10-12', '2025-11-02', '2025-11-15', '2025-12-25'
+  ],
+  '2026': [
+    '2026-01-01', '2026-02-16', '2026-02-17', '2026-04-03',
+    '2026-04-21', '2026-05-01', '2026-06-11', '2026-09-07',
+    '2026-10-12', '2026-11-02', '2026-11-15', '2026-12-25'
+  ]
+};
+
+/**
+ * Mapa interno de data -> nome do feriado para consulta rápida.
+ * Inclui Confraternização, Carnaval, Sexta-feira Santa, Tiradentes,
+ * Dia do Trabalho, Corpus Christi, Independência, Nossa Sra. Aparecida,
+ * Finados, Proclamação da República e Natal.
+ */
+const HOLIDAY_NAME_MAP: Record<string, string> = {
+  // --- 2024 ---
+  '2024-01-01': 'Confraternização Universal',
+  '2024-02-12': 'Carnaval',
+  '2024-02-13': 'Carnaval',
+  '2024-03-29': 'Sexta-feira Santa',
+  '2024-04-21': 'Tiradentes',
+  '2024-05-01': 'Dia do Trabalho',
+  '2024-05-30': 'Corpus Christi',
+  '2024-09-07': 'Independência do Brasil',
+  '2024-10-12': 'Nossa Sra. Aparecida',
+  '2024-11-02': 'Finados',
+  '2024-11-15': 'Proclamação da República',
+  '2024-12-25': 'Natal',
+  // --- 2025 ---
+  '2025-01-01': 'Confraternização Universal',
+  '2025-03-03': 'Carnaval',
+  '2025-03-04': 'Carnaval',
+  '2025-04-18': 'Sexta-feira Santa',
+  '2025-04-21': 'Tiradentes',
+  '2025-05-01': 'Dia do Trabalho',
+  '2025-06-19': 'Corpus Christi',
+  '2025-09-07': 'Independência do Brasil',
+  '2025-10-12': 'Nossa Sra. Aparecida',
+  '2025-11-02': 'Finados',
+  '2025-11-15': 'Proclamação da República',
+  '2025-12-25': 'Natal',
+  // --- 2026 ---
+  '2026-01-01': 'Confraternização Universal',
+  '2026-02-16': 'Carnaval',
+  '2026-02-17': 'Carnaval',
+  '2026-04-03': 'Sexta-feira Santa',
+  '2026-04-21': 'Tiradentes',
+  '2026-05-01': 'Dia do Trabalho',
+  '2026-06-11': 'Corpus Christi',
+  '2026-09-07': 'Independência do Brasil',
+  '2026-10-12': 'Nossa Sra. Aparecida',
+  '2026-11-02': 'Finados',
+  '2026-11-15': 'Proclamação da República',
+  '2026-12-25': 'Natal'
+};
+
+/**
+ * Verifica se uma data é feriado nacional brasileiro.
+ * @param dateStr String no formato "YYYY-MM-DD"
+ */
+export function isBrazilianHoliday(dateStr: string): { isHoliday: boolean; holidayName: string } {
+  const name = HOLIDAY_NAME_MAP[dateStr];
+  return { isHoliday: !!name, holidayName: name || '' };
+}
+
+// ===========================================================================
+// CALENDÁRIO DE ROTAÇÃO DE ESCALAS
+// ===========================================================================
+
+export interface RotationDay {
+  date: string;
+  dayOfWeek: number;
+  dayName: string;
+  isHoliday: boolean;
+  isWeekend: boolean;
+  shifts: Array<{
+    shiftType: ShiftType;
+    count: number;
+    agents: string[]; // IDs dos agentes alocados neste turno
+  }>;
+  totalAgents: number;
+  coverage: number; // total de agente-minutos de cobertura no dia
+  notes: string;
+}
+
+export interface RotationCalendar {
+  days: RotationDay[];
+  summary: {
+    totalDays: number;
+    workingDays: number;
+    weekendDays: number;
+    holidays: number;
+    totalAgentDays: number;
+    avgDailyHC: number;
+    peakDayHC: number;
+    minDayHC: number;
+    shiftDistribution: Record<string, number>;
+  };
+}
+
+/** Nomes dos dias da semana em português (índice = getDay()) */
+const DAY_NAMES_PT: string[] = [
+  'Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira',
+  'Quinta-feira', 'Sexta-feira', 'Sábado'
+];
+
+/**
+ * Gera um calendário de rotação mensal para o call center.
+ *
+ * - Cada agente recebe 1 folga semanal (seg-sex), rotativa por semana.
+ * - Sábados operam com 50% do efetivo.
+ * - Domingos são folga geral.
+ * - Feriados nacionais brasileiros são respeitados.
+ *
+ * @param year       Ano (ex: 2025)
+ * @param month      Mês (1-12)
+ * @param totalHC    Número total de agentes
+ * @param shiftTypes Tipos de turno habilitados para distribuição
+ * @param excludeDates  Datas extras a considerar como folga ("YYYY-MM-DD")
+ */
+export function generateRotationCalendar(
+  year: number,
+  month: number,
+  totalHC: number,
+  shiftTypes: ShiftType[],
+  excludeDates: string[] = []
+): RotationCalendar {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const excludeSet = new Set(excludeDates);
+  const shiftDefs = shiftTypes
+    .map(t => AVAILABLE_SHIFTS.find(s => s.type === t))
+    .filter((s): s is ShiftDefinition => !!s);
+
+  // Ordenar por duração decrescente para distribuição proporcional estável
+  shiftDefs.sort((a, b) => b.durationMinutes - a.durationMinutes);
+
+  // Gerar IDs de agentes: A1, A2, ..., A{totalHC}
+  const allAgentIds: string[] = Array.from({ length: totalHC }, (_, i) => `A${i + 1}`);
+
+  const days: RotationDay[] = [];
+  let totalAgentDays = 0;
+  let peakDayHC = 0;
+  let minDayHC = Infinity;
+  const shiftDistribution: Record<string, number> = {};
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const mm = String(month).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    const dateStr = `${year}-${mm}-${dd}`;
+    const dateObj = new Date(year, month - 1, day);
+    const dayOfWeek = dateObj.getDay(); // 0=Domingo, 6=Sábado
+    const dayName = DAY_NAMES_PT[dayOfWeek];
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const holidayInfo = isBrazilianHoliday(dateStr);
+    const isHoliday = holidayInfo.isHoliday || excludeSet.has(dateStr);
+    const holidayName = holidayInfo.holidayName || (excludeSet.has(dateStr) ? 'Folga extra' : '');
+
+    // Domingo = folga geral; Feriado = folga geral
+    if (dayOfWeek === 0 || isHoliday) {
+      const notes = dayOfWeek === 0
+        ? 'Domingo - folga geral'
+        : `Feriado: ${holidayName}`;
+      days.push({
+        date: dateStr, dayOfWeek, dayName,
+        isHoliday, isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
+        shifts: [], totalAgents: 0, coverage: 0, notes
+      });
+      // Domingos e feriados não entram nas estatísticas de HC mínimo/máximo de trabalho
+      continue;
+    }
+
+    // Determinar agentes disponíveis
+    let availableAgents: string[];
+
+    if (dayOfWeek === 6) {
+      // Sábado: 50% do efetivo total
+      const saturdayCount = Math.round(totalHC / 2);
+      availableAgents = allAgentIds.slice(0, saturdayCount);
+    } else {
+      // Dia útil (seg-sex): aplicar rotação de folga semanal
+      // Semana do mês (0-indexada)
+      const weekOfMonth = Math.floor((day - 1) / 7);
+      // Índice do dia útil (Seg=0, Ter=1, Qua=2, Qui=3, Sex=4)
+      const weekdayIdx = (dayOfWeek + 6) % 7; // getDay(): 1->0, 2->1, ..., 6->5
+
+      // Agente A_i está de folga se (i + semana) % 5 === weekdayIdx
+      availableAgents = allAgentIds.filter((_, i) => (i + weekOfMonth) % 5 !== weekdayIdx);
+    }
+
+    const totalAgentsToday = availableAgents.length;
+    totalAgentDays += totalAgentsToday;
+
+    // Distribuir agentes proporcionalmente à duração dos turnos
+    const totalDurationWeight = shiftDefs.reduce((sum, s) => sum + s.durationMinutes, 0);
+    const shiftAssignments: RotationDay['shifts'] = [];
+    let agentsUsed = 0;
+
+    for (let si = 0; si < shiftDefs.length; si++) {
+      const isLast = si === shiftDefs.length - 1;
+      let count: number;
+
+      if (isLast) {
+        // Último turno recebe os agentes restantes
+        count = totalAgentsToday - agentsUsed;
+      } else {
+        const proportion = shiftDefs[si].durationMinutes / totalDurationWeight;
+        count = Math.round(totalAgentsToday * proportion);
+        // Limitar para não ultrapassar o disponível
+        count = Math.min(count, totalAgentsToday - agentsUsed);
+      }
+
+      if (count > 0) {
+        const agents = availableAgents.slice(agentsUsed, agentsUsed + count);
+        shiftAssignments.push({
+          shiftType: shiftDefs[si].type,
+          count,
+          agents
+        });
+        shiftDistribution[shiftDefs[si].type] = (shiftDistribution[shiftDefs[si].type] || 0) + count;
+        agentsUsed += count;
+      }
+    }
+
+    // Calcular cobertura em agente-minutos
+    const coverage = shiftAssignments.reduce(
+      (sum, sa) => {
+        const def = shiftDefs.find(s => s.type === sa.shiftType);
+        return sum + sa.count * (def ? def.durationMinutes : 0);
+      }, 0
+    );
+
+    // Notas do dia
+    let notes = '';
+    if (dayOfWeek === 6) {
+      notes = 'Sábado - 50% do efetivo';
+    } else {
+      notes = `${totalAgentsToday} agentes (com folga rotativa)`;
+    }
+
+    if (totalAgentsToday > peakDayHC) peakDayHC = totalAgentsToday;
+    if (totalAgentsToday < minDayHC) minDayHC = totalAgentsToday;
+
+    days.push({
+      date: dateStr,
+      dayOfWeek,
+      dayName,
+      isHoliday: false,
+      isWeekend: dayOfWeek === 6,
+      shifts: shiftAssignments,
+      totalAgents: totalAgentsToday,
+      coverage,
+      notes
+    });
+  }
+
+  // Estatísticas apenas dos dias trabalhados
+  const workingDaysList = days.filter(d => !d.isHoliday && d.dayOfWeek !== 0);
+  const weekendDays = days.filter(d => d.isWeekend && !d.isHoliday);
+  const holidays = days.filter(d => d.isHoliday);
+  const workingDays = workingDaysList.length;
+  const avgDailyHC = workingDays > 0
+    ? Math.round((workingDaysList.reduce((s, d) => s + d.totalAgents, 0) / workingDays) * 100) / 100
+    : 0;
+
+  // Se não houver dias úteis, minDayHC deve ser 0
+  if (minDayHC === Infinity) minDayHC = 0;
+
+  return {
+    days,
+    summary: {
+      totalDays: daysInMonth,
+      workingDays,
+      weekendDays: weekendDays.length,
+      holidays: holidays.length,
+      totalAgentDays,
+      avgDailyHC,
+      peakDayHC,
+      minDayHC,
+      shiftDistribution
+    }
+  };
+}
+
+// ===========================================================================
+// EFICIÊNCIA POR TIPO DE TURNO
+// ===========================================================================
+
+export interface ShiftEfficiencyMetric {
+  shiftType: ShiftType;
+  totalAgents: number;
+  totalIntervals: number;
+  usefulIntervals: number;    // intervalos onde agentes foram realmente necessários
+  wastedIntervals: number;    // intervalos onde agentes ficaram ociosos
+  efficiency: number;         // useful / total
+  costPerUsefulMinute: number;
+  costPerTotalMinute: number;
+  recommendation: string;
+}
+
+/**
+ * Analisa a eficiência de cada tipo de turno com base no resultado de calculateShifts.
+ *
+ * Compara a cobertura de cada turno contra a demanda real (requiredAgentsPerInterval).
+ * Um intervalo é "útil" quando a demanda original é > 0.
+ *
+ * @param shiftResult            Resultado retornado por calculateShifts
+ * @param requiredAgentsPerInterval  Demanda original por intervalo (agente-Erlang)
+ * @param costPerAgentMonth      Custo mensal por agente (padrão R$ 5.000)
+ */
+export function calculateShiftEfficiency(
+  shiftResult: ShiftScheduleResult,
+  requiredAgentsPerInterval: number[],
+  costPerAgentMonth: number = 5000
+): ShiftEfficiencyMetric[] {
+  const { schedules, activePerInterval } = shiftResult;
+  const numIntervals = requiredAgentsPerInterval.length;
+
+  // Agrupar por tipo de turno
+  const byType = new Map<ShiftType, ScheduledShift[]>();
+  for (const sched of schedules) {
+    if (!byType.has(sched.shift.type)) {
+      byType.set(sched.shift.type, []);
+    }
+    byType.get(sched.shift.type)!.push(sched);
+  }
+
+  const metrics: ShiftEfficiencyMetric[] = [];
+
+  for (const [shiftType, entries] of byType) {
+    const shiftDef = AVAILABLE_SHIFTS.find(s => s.type === shiftType);
+    const daysOffFactor = shiftDef ? shiftDef.daysOffFactor : 7 / 6;
+
+    // HC diário total deste tipo
+    const totalAgents = entries.reduce((sum, e) => sum + e.count, 0);
+    // HC mensal estimado
+    const monthlyHC = Math.ceil(totalAgents * daysOffFactor);
+    const monthlyCost = monthlyHC * costPerAgentMonth;
+
+    let totalIntervals = 0;
+    let usefulIntervals = 0;
+
+    for (let i = 0; i < numIntervals; i++) {
+      const agentsAtInterval = (activePerInterval[i] && activePerInterval[i][shiftType]) || 0;
+      if (agentsAtInterval === 0) continue;
+
+      totalIntervals += agentsAtInterval;
+      if (requiredAgentsPerInterval[i] > 0) {
+        usefulIntervals += agentsAtInterval;
+      }
+    }
+
+    const wastedIntervals = totalIntervals - usefulIntervals;
+    const efficiency = totalIntervals > 0 ? usefulIntervals / totalIntervals : 0;
+
+    const usefulMinutes = usefulIntervals * 10; // cada intervalo = 10 minutos
+    const totalMinutes = totalIntervals * 10;
+    const costPerUsefulMinute = usefulMinutes > 0 ? Math.round((monthlyCost / usefulMinutes) * 100) / 100 : 0;
+    const costPerTotalMinute = totalMinutes > 0 ? Math.round((monthlyCost / totalMinutes) * 100) / 100 : 0;
+
+    // Gerar recomendação em português
+    let recommendation: string;
+    if (efficiency >= 0.9) {
+      recommendation = 'Excelente eficiência. Manter este turno na escala.';
+    } else if (efficiency >= 0.75) {
+      recommendation = 'Boa eficiência. Turno bem aproveitado na cobertura.';
+    } else if (efficiency >= 0.5) {
+      recommendation = 'Eficiência moderada. Considerar ajustar horário de início para reduzir ociosidade.';
+    } else if (efficiency >= 0.3) {
+      recommendation = 'Eficiência baixa. Avaliar necessidade deste turno ou redimensionar quantidade.';
+    } else {
+      recommendation = 'Eficiência crítica. Recomendar remover este turno da escala ou realocar agentes.';
+    }
+
+    metrics.push({
+      shiftType,
+      totalAgents,
+      totalIntervals,
+      usefulIntervals,
+      wastedIntervals,
+      efficiency: Math.round(efficiency * 1000) / 1000,
+      costPerUsefulMinute,
+      costPerTotalMinute,
+      recommendation
+    });
+  }
+
+  // Ordenar por eficiência decrescente
+  metrics.sort((a, b) => b.efficiency - a.efficiency);
+
+  return metrics;
+}
+
+// ===========================================================================
+// OTIMIZAÇÃO AUTOMÁTICA DE MIX DE TURNOS
+// ===========================================================================
+
+export interface OptimizationResult {
+  bestCombination: ShiftType[];
+  totalMonthlyHC: number;
+  estimatedCost: number;
+  efficiency: number;
+  overstaffedPercent: number;
+  understaffedPercent: number;
+  allResults: Array<{
+    combination: ShiftType[];
+    monthlyHC: number;
+    cost: number;
+    efficiency: number;
+  }>;
+}
+
+/**
+ * Gera todas as combinações possíveis de k elementos a partir de um array.
+ * @param arr  Array de entrada
+ * @param k    Tamanho de cada combinação
+ */
+function combinations<T>(arr: T[], k: number): T[][] {
+  if (k === 0) return [[]];
+  if (arr.length < k) return [];
+  const [first, ...rest] = arr;
+  const withFirst = combinations(rest, k - 1).map(c => [first, ...c]);
+  const withoutFirst = combinations(rest, k);
+  return [...withFirst, ...withoutFirst];
+}
+
+/**
+ * Testa todas as combinações razoáveis de turnos (1 a 3 tipos por combinação)
+ * e retorna a mais custo-eficiente.
+ *
+ * O critério principal de ordenação é custo mensal estimado (menor = melhor).
+ * Em caso de empate, desempata por maior eficiência.
+ *
+ * @param requiredAgentsPerInterval  Demanda por intervalo (agente-Erlang)
+ * @param intervalLabels            Rótulos dos intervalos (ex: ["06:00", "06:10", ...])
+ * @param costPerAgentMonth         Custo mensal por agente (padrão R$ 5.000)
+ * @param overheadPercent           Percentual de encargos sobre o salário (padrão 30%)
+ * @param operatingDays             Dias de operação por semana (padrão 7)
+ * @param maxShiftsPerCombo         Máximo de turnos por combinação (padrão 3)
+ */
+export function optimizeShiftMix(
+  requiredAgentsPerInterval: number[],
+  intervalLabels: string[],
+  costPerAgentMonth: number = 5000,
+  overheadPercent: number = 30,
+  operatingDays: number = 7,
+  maxShiftsPerCombo: number = 3
+): OptimizationResult {
+  const allShiftTypes = AVAILABLE_SHIFTS.map(s => s.type);
+
+  // Gerar combinações de 1 a maxShiftsPerCombo turnos
+  const combos: ShiftType[][] = [];
+  for (let k = 1; k <= maxShiftsPerCombo; k++) {
+    combos.push(...combinations(allShiftTypes, k));
+  }
+
+  const totalIntervalsWithNeed = requiredAgentsPerInterval.filter(r => r > 0).length;
+
+  const allResults: OptimizationResult['allResults'] = [];
+
+  for (const combo of combos) {
+    const result = calculateShifts(requiredAgentsPerInterval, intervalLabels, combo, operatingDays);
+    const monthlyCost = Math.round(result.totalMonthlyHC * costPerAgentMonth * (1 + overheadPercent / 100));
+
+    allResults.push({
+      combination: combo,
+      monthlyHC: result.totalMonthlyHC,
+      cost: monthlyCost,
+      efficiency: result.efficiency
+    });
+  }
+
+  // Ordenar por custo (menor primeiro), desempatando por eficiência (maior primeiro)
+  allResults.sort((a, b) => {
+    if (a.cost !== b.cost) return a.cost - b.cost;
+    return b.efficiency - a.efficiency;
+  });
+
+  if (allResults.length === 0) {
+    return {
+      bestCombination: [],
+      totalMonthlyHC: 0,
+      estimatedCost: 0,
+      efficiency: 0,
+      overstaffedPercent: 0,
+      understaffedPercent: 0,
+      allResults: []
+    };
+  }
+
+  // Recalcular o melhor para obter métricas detalhadas de sobre/subdimensionamento
+  const best = allResults[0];
+  const bestResult = calculateShifts(
+    requiredAgentsPerInterval,
+    intervalLabels,
+    best.combination,
+    operatingDays
+  );
+
+  const overstaffedPercent = totalIntervalsWithNeed > 0
+    ? Math.round((bestResult.overstaffedIntervals / totalIntervalsWithNeed) * 10000) / 100
+    : 0;
+  const understaffedPercent = totalIntervalsWithNeed > 0
+    ? Math.round((bestResult.understaffedIntervals / totalIntervalsWithNeed) * 10000) / 100
+    : 0;
+
+  return {
+    bestCombination: best.combination,
+    totalMonthlyHC: best.monthlyHC,
+    estimatedCost: best.cost,
+    efficiency: bestResult.efficiency,
+    overstaffedPercent,
+    understaffedPercent,
+    allResults
+  };
+}
