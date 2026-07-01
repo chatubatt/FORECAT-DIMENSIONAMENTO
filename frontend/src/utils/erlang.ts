@@ -23,6 +23,7 @@ export interface ErlangInputs {
   fixedAgents?: number; // Set if user limits PAs
   fixedTma?: number; // User-provided override for TMA
   costPerAgentMonth?: number; // For costPerInterval calculation (default 5000)
+  numTelas?: number; // Quantidade de telas (para divisão no cabeçalho, não na projeção por intervalo)
 }
 
 /**
@@ -263,7 +264,19 @@ export interface DayForecast {
 
 function parseIntervalToMinutes(interval: string): number {
   const [h, m] = interval.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return -1;
   return h * 60 + m;
+}
+
+/**
+ * Verifica se um horário de intervalo está dentro da janela operacional válida.
+ * Restrição: horários de 00:00 a 05:50 e de 17:50 a 23:30 são BLOQUEADOS.
+ * Apenas intervalos entre 06:00 e 17:50 são permitidos para colocar operadores.
+ */
+export function isValidOperatingInterval(interval: string): boolean {
+  const mins = parseIntervalToMinutes(interval);
+  if (mins < 0) return false;
+  return mins >= 360 && mins <= 1070; // 06:00 (360) a 17:50 (1070)
 }
 
 export function isWithinOperatingHours(dateStr: string, interval: string, config: OperatingHoursConfig): boolean {
@@ -300,20 +313,74 @@ export function calculateStaffingStrategy(
   opHours: OperatingHoursConfig
 ): OptimizedInterval[] {
   let allIntervals: OptimizedInterval[] = [];
-  
+
+  // Detectar a largura real dos intervalos a partir dos dados
+  // Se os intervalos são 00:00, 00:30, 01:00... → 30 min (1800s)
+  // Se são 08:00, 08:10, 08:20... → 10 min (600s)
+  let detectedIntervalSeconds = inputs.intervalSeconds;
+  if (monthData.length > 0 && monthData[0].intervalos.length > 1) {
+    const sortedIntervals = monthData[0].intervalos
+      .map(i => i.intervalo)
+      .filter(i => parseIntervalToMinutes(i) >= 0)
+      .sort();
+    if (sortedIntervals.length >= 2) {
+      const first = parseIntervalToMinutes(sortedIntervals[0]);
+      const second = parseIntervalToMinutes(sortedIntervals[1]);
+      const diff = second - first;
+      if (diff > 0 && diff <= 120) {
+        detectedIntervalSeconds = diff * 60;
+      }
+    }
+  }
+
+  // Determinar a janela operacional REAL (mais restritiva entre config e isValidOperatingInterval)
+  const getEffectiveOpWindow = (dateStr: string): { startMins: number; endMins: number } | null => {
+    const d = new Date(dateStr + "T00:00:00");
+    const day = d.getDay();
+    let hours;
+    if (day === 0) hours = opHours.sundays;
+    else if (day === 6) hours = opHours.saturdays;
+    else hours = opHours.weekdays;
+
+    if (hours.closed) return null;
+
+    const cfgStart = parseIntervalToMinutes(hours.start);
+    const cfgEnd = parseIntervalToMinutes(hours.end);
+
+    // Janela mais restritiva: max(config start, 06:00) e min(config end, 17:50)
+    const effectiveStart = Math.max(cfgStart, 360); // 06:00
+    const effectiveEnd = Math.min(cfgEnd, 1070);   // 17:50
+
+    return { startMins: effectiveStart, endMins: effectiveEnd };
+  };
+
   // 1. Calculate baseline strictly for each interval
   for (const day of monthData) {
+    const opWindow = getEffectiveOpWindow(day.data);
+    
     for (const interval of day.intervalos) {
-      const isClosed = !isWithinOperatingHours(day.data, interval.intervalo, opHours);
+      const intMins = parseIntervalToMinutes(interval.intervalo);
+      const intMinsValid = intMins >= 0;
+
+      // Determinar se está dentro do horário de operação
+      let isClosed = false;
+      if (!intMinsValid || !opWindow) {
+        isClosed = true;
+      } else {
+        isClosed = !(intMins >= opWindow.startMins && intMins < opWindow.endMins);
+      }
       
       let res: ErlangResult;
       const effectiveTmo = inputs.fixedTma || interval.tmo || inputs.tmo;
+      
+      // Usar o intervalSeconds detectado (não o hardcodado de 600)
+      const effectiveIntervalSeconds = detectedIntervalSeconds;
       
       if (isClosed || interval.volume === 0) {
         // Fechado ou sem volume
         res = {
           agents: 0, requiredAgents: 0, traffic: 0,
-          serviceLevel: interval.volume > 0 ? 0 : 100, // Se fechado mas tem vol = abandono total
+          serviceLevel: interval.volume > 0 ? 0 : 100,
           occupancy: 0, probabilityOfWait: interval.volume > 0 ? 100 : 0, asa: interval.volume > 0 ? 9999 : 0,
           erlangB: 0, abandonRate: interval.volume > 0 ? 95 : 0, avgWaitTime: interval.volume > 0 ? 999 : 0, costPerInterval: 0
         };
@@ -321,7 +388,8 @@ export function calculateStaffingStrategy(
         res = findMinAgents({
           ...inputs,
           volume: interval.volume,
-          tmo: effectiveTmo
+          tmo: effectiveTmo,
+          intervalSeconds: effectiveIntervalSeconds
         });
       }
       
@@ -362,7 +430,7 @@ export function calculateStaffingStrategy(
       if (item.isClosed || item.agents <= 1) continue;
       
       // Simula -1 agent
-      const traffic = (item.volume / inputs.intervalSeconds) * item.tmo;
+      const traffic = (item.volume / detectedIntervalSeconds) * item.tmo;
       const sim = evaluateErlangConfig(item.agents - 1, traffic, item.tmo, inputs.targetSlaTime, inputs.shrinkage);
       
       // Se abaixar esse intervalo que antes tava OK

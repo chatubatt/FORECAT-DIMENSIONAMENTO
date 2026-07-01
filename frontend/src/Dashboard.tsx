@@ -241,13 +241,14 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   const [dimFixedAgents, setDimFixedAgents] = useState<number | ''>('');
   const [dimTma, setDimTma] = useState<number | ''>('');
   const [dimFixedVolume, setDimFixedVolume] = useState<number | ''>('');
+  const [dimQuantidadeTelas, setDimQuantidadeTelas] = useState<number | ''>(''); // Quantidade de telas/posições
   const [dimSelectedDay, setDimSelectedDay] = useState<string>(''); // Data selecionada para o dimensionamento
   const [dimShowConsolidated, setDimShowConsolidated] = useState<boolean>(true);
 
   const [dimStrategy, setDimStrategy] = useState<SlaStrategy>('monthly_avg');
   const [dimOpHours, setDimOpHours] = useState<OperatingHoursConfig>({
-    weekdays: { start: '08:00', end: '20:00', closed: false },
-    saturdays: { start: '09:00', end: '15:00', closed: false },
+    weekdays: { start: '06:00', end: '17:30', closed: false },
+    saturdays: { start: '06:00', end: '14:00', closed: false },
     sundays: { start: '00:00', end: '23:59', closed: true }
   });
 
@@ -1211,16 +1212,20 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   const dimSummary = useMemo(() => {
     if (erlangData.length === 0) return null;
 
+    const numTelas = dimQuantidadeTelas !== '' && Number(dimQuantidadeTelas) > 1 ? Number(dimQuantidadeTelas) : 1;
+
     if (dimStrategy === 'monthly_avg' && monthlyShiftSchedules.length > 0) {
       const targetDate = dimSelectedDay || monthComparisons?.dmm_data || monthForecastData[0]?.data;
       const selectedMonthlyDay = monthlyShiftSchedules.find(d => d.data === targetDate);
       if (selectedMonthlyDay && selectedMonthlyDay.shiftRes) {
         const maxCoverage = selectedMonthlyDay.shiftRes.coverage?.length > 0 ? Math.max(...selectedMonthlyDay.shiftRes.coverage) : 0;
+        const totalMonthVol = optimizedMonthErlang.reduce((sum, d) => sum + d.volume, 0);
         return {
-          maxPAs: maxCoverage,
-          avgPAs: selectedMonthlyDay.avgPAs,
+          maxPAs: Math.ceil(maxCoverage / numTelas),
+          avgPAs: Math.ceil((selectedMonthlyDay.avgPAs || 0) / numTelas),
           finalSla: selectedMonthlyDay.finalSla,
-          totalMonthVol: optimizedMonthErlang.reduce((sum, d) => sum + d.volume, 0)
+          totalMonthVol: Math.round(totalMonthVol / numTelas),
+          numTelas: numTelas > 1 ? numTelas : undefined
         };
       }
     }
@@ -1239,8 +1244,14 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
     const totalMonthVol = optimizedMonthErlang.reduce((sum, d) => sum + d.volume, 0);
 
-    return { maxPAs, avgPAs, finalSla: weightedSla, totalMonthVol };
-  }, [erlangData, optimizedMonthErlang, dimStrategy, monthlyShiftSchedules, dimSelectedDay, monthComparisons, monthForecastData]);
+    return { 
+      maxPAs: Math.ceil(maxPAs / numTelas), 
+      avgPAs: Math.ceil(avgPAs / numTelas), 
+      finalSla: weightedSla, 
+      totalMonthVol: Math.round(totalMonthVol / numTelas),
+      numTelas: numTelas > 1 ? numTelas : undefined
+    };
+  }, [erlangData, optimizedMonthErlang, dimStrategy, monthlyShiftSchedules, dimSelectedDay, monthComparisons, monthForecastData, dimQuantidadeTelas]);
 
   const shiftSchedule = useMemo(() => {
     if (erlangData.length === 0 || dimEnabledShifts.length === 0) return null;
@@ -3568,6 +3579,10 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                     <input type="number" min="0" placeholder="Auto" value={dimFixedVolume} onChange={e => setDimFixedVolume(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-[rgba(251,191,36,0.06)] border border-amber-600/50 rounded p-2 text-amber-100 placeholder-amber-700/50" />
                   </div>
                   <div>
+                    <label className="block text-sm text-cyan-400 mb-1" title="Divide o volume pelo nº de telas para o cabeçalho. A projeção por intervalo mantém o volume original.">Qtd. Telas</label>
+                    <input type="number" min="1" placeholder="1" value={dimQuantidadeTelas} onChange={e => setDimQuantidadeTelas(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-[rgba(6,182,212,0.06)] border border-cyan-600/50 rounded p-2 text-cyan-100 placeholder-cyan-700/50" />
+                  </div>
+                  <div>
                     <label className="block text-sm text-amber-400 mb-1" title="Travar quantidade de operadores e ver o que acontece com o Nível de Serviço">Forçar PAs</label>
                     <input type="number" min="0" placeholder="Livre" value={dimFixedAgents} onChange={e => setDimFixedAgents(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-[rgba(251,191,36,0.06)] border border-amber-600/50 rounded p-2 text-amber-100 placeholder-amber-700/50" />
                   </div>
@@ -3923,7 +3938,10 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div className="bg-gradient-to-br from-indigo-900/50 to-slate-800 rounded-xl p-6 shadow-xl border border-indigo-500/20">
-                      <p className="text-slate-400 text-sm font-medium mb-1">Volume Mensal Consolidado</p>
+                      <p className="text-slate-400 text-sm font-medium mb-1">
+                        Volume Mensal Consolidado
+                        {dimSummary?.numTelas && <span className="ml-2 text-cyan-400 text-xs">({dimSummary.numTelas} tela{dimSummary.numTelas > 1 ? 's' : ''})</span>}
+                      </p>
                       <div className="flex items-baseline gap-2">
                         <h4 className="text-3xl font-bold text-indigo-400">{dimSummary.totalMonthVol.toLocaleString('pt-BR')}</h4>
                         <span className="text-sm text-slate-500">ligações no mês</span>
