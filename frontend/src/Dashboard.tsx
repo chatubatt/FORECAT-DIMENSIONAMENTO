@@ -3348,11 +3348,11 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <label className="block text-sm text-slate-400 mb-1">SLA Alvo (%)</label>
-                    <input type="number" min="10" max="100" value={dimTargetSlaPercent} onChange={e => setDimTargetSlaPercent(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" />
+                    <input type="number" min="10" max="100" value={dimTargetSlaPercent === 0 ? '' : dimTargetSlaPercent} onChange={e => setDimTargetSlaPercent(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" />
                   </div>
                   <div>
                     <label className="block text-sm text-slate-400 mb-1">Tempo Alvo (s)</label>
-                    <input type="number" min="5" max="300" value={dimTargetSlaTime} onChange={e => setDimTargetSlaTime(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" />
+                    <input type="number" min="5" max="300" value={dimTargetSlaTime === 0 ? '' : dimTargetSlaTime} onChange={e => setDimTargetSlaTime(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" />
                   </div>
                   <div>
                     <label className="block text-sm text-slate-400 mb-1">TMA (s)</label>
@@ -3387,23 +3387,23 @@ export default function Dashboard() {
                           <div className="grid grid-cols-5 gap-1.5">
                             <div>
                               <label className="block text-[9px] text-slate-400 uppercase text-center font-semibold mb-0.5" title="Absenteísmo">ABS</label>
-                              <input type="number" step="0.1" value={conf.abs} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], abs: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
+                              <input type="number" step="0.1" value={conf.abs === 0 ? '' : conf.abs} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], abs: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
                             </div>
                             <div>
                               <label className="block text-[9px] text-slate-400 uppercase text-center font-semibold mb-0.5" title="Pausa NR17">NR17</label>
-                              <input type="number" step="0.1" value={conf.nr17} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], nr17: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
+                              <input type="number" step="0.1" value={conf.nr17 === 0 ? '' : conf.nr17} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], nr17: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
                             </div>
                             <div>
                               <label className="block text-[9px] text-slate-400 uppercase text-center font-semibold mb-0.5" title="Treinamento">TRN</label>
-                              <input type="number" step="0.1" value={conf.treinamento} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], treinamento: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
+                              <input type="number" step="0.1" value={conf.treinamento === 0 ? '' : conf.treinamento} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], treinamento: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
                             </div>
                             <div>
                               <label className="block text-[9px] text-slate-400 uppercase text-center font-semibold mb-0.5" title="Turnover">TO</label>
-                              <input type="number" step="0.1" value={conf.turnover} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], turnover: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
+                              <input type="number" step="0.1" value={conf.turnover === 0 ? '' : conf.turnover} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], turnover: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
                             </div>
                             <div>
                               <label className="block text-[9px] text-slate-400 uppercase text-center font-semibold mb-0.5">OUTR</label>
-                              <input type="number" step="0.1" value={conf.outros} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], outros: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
+                              <input type="number" step="0.1" value={conf.outros === 0 ? '' : conf.outros} onChange={e => setDimShrinkageConfig(prev => ({ ...prev, [shiftType]: { ...prev[shiftType], outros: Number(e.target.value) } }))} className="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-xs outline-none focus:border-blue-500 text-center" />
                             </div>
                           </div>
                         </div>
