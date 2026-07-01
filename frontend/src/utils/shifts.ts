@@ -617,7 +617,7 @@ export function generateRotationCalendar(
     const dateObj = new Date(year, month - 1, day);
     const dayOfWeek = dateObj.getDay(); // 0=Domingo, 6=Sábado
     const dayName = DAY_NAMES_PT[dayOfWeek];
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const _isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
     const holidayInfo = isBrazilianHoliday(dateStr);
     const isHoliday = holidayInfo.isHoliday || excludeSet.has(dateStr);
     const holidayName = holidayInfo.holidayName || (excludeSet.has(dateStr) ? 'Folga extra' : '');

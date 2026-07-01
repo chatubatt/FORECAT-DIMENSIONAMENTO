@@ -130,6 +130,7 @@ interface HistoryStats {
   curvas_distribuicao?: Record<string, Record<string, number>>;
   matrizes_intervalo?: Record<string, Record<string, Record<string, number>>>;
   matrizes_tmo?: Record<string, Record<string, Record<string, number>>>;
+  wfm_metrics?: any;
 }
 
 const computeMGeo = (vals: number[]) => {
@@ -4505,13 +4506,13 @@ export default function Dashboard() {
                   whatifBaseVolume, whatifTmo, whatifIntervalSec,
                   whatifTargetSla, whatifSlaTime, whatifShrinkage / 100,
                   [
-                    { name: 'Pico Extremo (+30%)', volumeChange: 30, tmoChange: 0 },
-                    { name: 'Pico Moderado (+20%)', volumeChange: 20, tmoChange: 0 },
-                    { name: 'Operação Normal', volumeChange: 0, tmoChange: 0 },
-                    { name: 'Baixa Demanda (-20%)', volumeChange: -20, tmoChange: 0 },
-                    { name: 'Crise (+30% vol, +15% TMO)', volumeChange: 30, tmoChange: 15 },
-                    { name: 'TMO Alto (+25% TMO)', volumeChange: 0, tmoChange: 25 },
-                    { name: 'Black Friday (+50% vol)', volumeChange: 50, tmoChange: -10 },
+                    { name: 'Pico Extremo (+30%)', volumeDeltaPct: 30, tmoDeltaPct: 0 },
+                    { name: 'Pico Moderado (+20%)', volumeDeltaPct: 20, tmoDeltaPct: 0 },
+                    { name: 'Operação Normal', volumeDeltaPct: 0, tmoDeltaPct: 0 },
+                    { name: 'Baixa Demanda (-20%)', volumeDeltaPct: -20, tmoDeltaPct: 0 },
+                    { name: 'Crise (+30% vol, +15% TMO)', volumeDeltaPct: 30, tmoDeltaPct: 15 },
+                    { name: 'TMO Alto (+25% TMO)', volumeDeltaPct: 0, tmoDeltaPct: 25 },
+                    { name: 'Black Friday (+50% vol)', volumeDeltaPct: 50, tmoDeltaPct: -10 },
                   ]
                 );
                 setWhatifResults(results);
