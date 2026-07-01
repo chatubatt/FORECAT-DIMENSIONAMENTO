@@ -51,7 +51,9 @@ export function calculateShifts(
   requiredAgentsPerInterval: number[],
   intervalLabels: string[],
   enabledShiftTypes: ShiftType[],
-  operatingDays: number = 7
+  operatingDays: number = 7,
+  minStartIdx: number = 0,
+  maxStartIdx: number = Infinity
 ): ShiftScheduleResult {
   
   // Clone to avoid mutating original, and update daysOffFactor dynamically
@@ -95,11 +97,11 @@ export function calculateShifts(
     let bestStartIndex = 0;
 
     for (const shift of enabledShifts) {
-      const minStart = Math.max(0, peakIdx - shift.intervalsCovered + 1);
-      const effectiveMaxStart = Math.min(peakIdx, Math.max(0, numIntervals - shift.intervalsCovered));
+      const minStart = Math.max(minStartIdx, peakIdx - shift.intervalsCovered + 1);
+      const effectiveMaxStart = Math.min(maxStartIdx, peakIdx, Math.max(0, numIntervals - shift.intervalsCovered));
       
-      const startIter = minStart <= effectiveMaxStart ? minStart : 0;
-      const endIter = minStart <= effectiveMaxStart ? effectiveMaxStart : Math.max(0, numIntervals - shift.intervalsCovered);
+      const startIter = minStart <= effectiveMaxStart ? minStart : minStartIdx;
+      const endIter = minStart <= effectiveMaxStart ? effectiveMaxStart : Math.min(maxStartIdx, Math.max(0, numIntervals - shift.intervalsCovered));
       
       for (let s = startIter; s <= endIter; s++) {
         let useful = 0;
@@ -421,7 +423,9 @@ export function compareShiftCombinations(
   intervalLabels: string[],
   costPerAgentMonth: number = 5000,
   overheadPercent: number = 30,
-  operatingDays: number = 7
+  operatingDays: number = 7,
+  minStartIdx: number = 0,
+  maxStartIdx: number = Infinity
 ): ShiftCombinationCost[] {
   // Test common combinations
   const combinations: ShiftType[][] = [
@@ -438,7 +442,7 @@ export function compareShiftCombinations(
   ];
 
   return combinations.map(shifts => {
-    const result = calculateShifts(requiredAgentsPerInterval, intervalLabels, shifts, operatingDays);
+    const result = calculateShifts(requiredAgentsPerInterval, intervalLabels, shifts, operatingDays, minStartIdx, maxStartIdx);
     const totalCost = result.totalMonthlyHC * costPerAgentMonth * (1 + overheadPercent / 100);
     return {
       shifts,
@@ -909,7 +913,9 @@ export function optimizeShiftMix(
   costPerAgentMonth: number = 5000,
   overheadPercent: number = 30,
   operatingDays: number = 7,
-  maxShiftsPerCombo: number = 3
+  maxShiftsPerCombo: number = 3,
+  minStartIdx: number = 0,
+  maxStartIdx: number = Infinity
 ): OptimizationResult {
   const allShiftTypes = AVAILABLE_SHIFTS.map(s => s.type);
 
@@ -924,7 +930,7 @@ export function optimizeShiftMix(
   const allResults: OptimizationResult['allResults'] = [];
 
   for (const combo of combos) {
-    const result = calculateShifts(requiredAgentsPerInterval, intervalLabels, combo, operatingDays);
+    const result = calculateShifts(requiredAgentsPerInterval, intervalLabels, combo, operatingDays, minStartIdx, maxStartIdx);
     const monthlyCost = Math.round(result.totalMonthlyHC * costPerAgentMonth * (1 + overheadPercent / 100));
 
     allResults.push({
@@ -959,7 +965,9 @@ export function optimizeShiftMix(
     requiredAgentsPerInterval,
     intervalLabels,
     best.combination,
-    operatingDays
+    operatingDays,
+    minStartIdx,
+    maxStartIdx
   );
 
   const overstaffedPercent = totalIntervalsWithNeed > 0

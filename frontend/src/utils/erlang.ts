@@ -375,8 +375,13 @@ export function calculateStaffingStrategy(
       
       // Usar o intervalSeconds detectado (não o hardcodado de 600)
       const effectiveIntervalSeconds = detectedIntervalSeconds;
+
+      // Dividir volume por telas para cálculo de staffing (Erlang C)
+      // A projeção por intervalo mantém o volume original
+      const numTelas = inputs.numTelas && inputs.numTelas > 1 ? inputs.numTelas : 1;
+      const staffingVolume = interval.volume / numTelas;
       
-      if (isClosed || interval.volume === 0) {
+      if (isClosed || staffingVolume === 0) {
         // Fechado ou sem volume
         res = {
           agents: 0, requiredAgents: 0, traffic: 0,
@@ -387,7 +392,7 @@ export function calculateStaffingStrategy(
       } else {
         res = findMinAgents({
           ...inputs,
-          volume: interval.volume,
+          volume: staffingVolume,
           tmo: effectiveTmo,
           intervalSeconds: effectiveIntervalSeconds
         });
@@ -397,7 +402,7 @@ export function calculateStaffingStrategy(
         ...res,
         data: day.data,
         intervalo: interval.intervalo,
-        volume: interval.volume,
+        volume: interval.volume,  // Volume ORIGINAL para projeção/gráficos
         tmo: effectiveTmo,
         isClosed
       });

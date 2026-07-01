@@ -747,10 +747,10 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   const erlangInputs = useMemo(() => ({
     activeTab, monthForecastData, dimTargetSlaPercent, dimTargetSlaTime, 
     dimShrinkage, dimFixedAgents, dimTma, dimStrategy, dimOpHours, 
-    dimFixedVolume, dimCurveType, stats
+    dimFixedVolume, dimCurveType, stats, dimQuantidadeTelas
   }), [activeTab, monthForecastData, dimTargetSlaPercent, dimTargetSlaTime, 
        dimShrinkage, dimFixedAgents, dimTma, dimStrategy, dimOpHours, 
-       dimFixedVolume, dimCurveType, stats]);
+       dimFixedVolume, dimCurveType, stats, dimQuantidadeTelas]);
 
   const debouncedErlangInputs = useDebounce(erlangInputs, 300);
 
@@ -847,7 +847,8 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       shrinkage: dimShrinkage / 100,
       maxOccupancy: 0.85,
       fixedAgents: dimFixedAgents === '' ? undefined : Number(dimFixedAgents),
-      fixedTma: dimTma === '' ? undefined : Number(dimTma)
+      fixedTma: dimTma === '' ? undefined : Number(dimTma),
+      numTelas: dimQuantidadeTelas !== '' && Number(dimQuantidadeTelas) > 1 ? Number(dimQuantidadeTelas) : undefined
     };
 
     erlangWorkerRef.current?.postMessage({
@@ -872,6 +873,22 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
     return optimizedMonthErlang.filter(item => item.data === targetDate);
   }, [optimizedMonthErlang, dimSelectedDay, monthComparisons, monthForecastData]);
+
+  // Helper: compute valid shift start window indices from interval labels
+  // Restrição: turnos só podem iniciar entre 06:00 e 17:40 (blocos de 10 min)
+  const getShiftWindowIndices = (labels: string[]): { minStart: number; maxStart: number } => {
+    let minStart = 0;
+    let maxStart = labels.length - 1;
+    for (let i = 0; i < labels.length; i++) {
+      const [h, m] = labels[i].split(':').map(Number);
+      if (!isNaN(h) && !isNaN(m) && h * 60 + m >= 360) { minStart = i; break; }
+    }
+    for (let i = labels.length - 1; i >= 0; i--) {
+      const [h, m] = labels[i].split(':').map(Number);
+      if (!isNaN(h) && !isNaN(m) && h * 60 + m <= 1060) { maxStart = i; break; }
+    }
+    return { minStart, maxStart };
+  };
 
   const monthlyShiftSchedules = useMemo(() => {
     if (optimizedMonthErlang.length === 0 || dimEnabledShifts.length === 0) return [];
@@ -903,22 +920,28 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
     const opDays = 7 - (dimOpHours.sundays.closed ? 1 : 0) - (dimOpHours.saturdays.closed ? 1 : 0);
 
+    // Compute valid shift start window indices
+    const dmmWeekdayLabels = dmmWeekday ? byDay[dmmWeekday].map(d => d.intervalo) : [];
+    const { minStart: wMin, maxStart: wMax } = getShiftWindowIndices(dmmWeekdayLabels.length > 0 ? dmmWeekdayLabels : ['00:00']);
+
     // Pre-calculate shiftRes for these DMMs
     let baseSchedules: Record<string, any> = {};
     if (dmmWeekday) {
       const req = byDay[dmmWeekday].map(d => d.requiredAgents);
       const lbl = byDay[dmmWeekday].map(d => d.intervalo);
-      baseSchedules.weekday = calculateShifts(req, lbl, dimEnabledShifts, opDays);
+      baseSchedules.weekday = calculateShifts(req, lbl, dimEnabledShifts, opDays, wMin, wMax);
     }
     if (dmmSat) {
       const req = byDay[dmmSat].map(d => d.requiredAgents);
       const lbl = byDay[dmmSat].map(d => d.intervalo);
-      baseSchedules.saturday = calculateShifts(req, lbl, dimEnabledShifts, opDays);
+      const w = getShiftWindowIndices(lbl);
+      baseSchedules.saturday = calculateShifts(req, lbl, dimEnabledShifts, opDays, w.minStart, w.maxStart);
     }
     if (dmmSun) {
       const req = byDay[dmmSun].map(d => d.requiredAgents);
       const lbl = byDay[dmmSun].map(d => d.intervalo);
-      baseSchedules.sunday = calculateShifts(req, lbl, dimEnabledShifts, opDays);
+      const w = getShiftWindowIndices(lbl);
+      baseSchedules.sunday = calculateShifts(req, lbl, dimEnabledShifts, opDays, w.minStart, w.maxStart);
     }
 
     if (dimStrategy === 'monthly_avg' && dmmWeekday && baseSchedules.weekday) {
@@ -1015,7 +1038,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
           const mid = (low + high) / 2;
           const scaledReq = origReq.map(r => Math.round(r * mid));
 
-          const newWeekdaySchedule = calculateShifts(scaledReq, byDay[dmmWeekday].map((d: any) => d.intervalo), dimEnabledShifts, opDays);
+          const newWeekdaySchedule = calculateShifts(scaledReq, byDay[dmmWeekday].map((d: any) => d.intervalo), dimEnabledShifts, opDays, wMin, wMax);
 
           const testSchedules = { ...baseSchedules, weekday: newWeekdaySchedule };
           const firstDmmSla = evaluateDaySla(testSchedules, absoluteFirstDmm);
@@ -1050,7 +1073,8 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       if (!baseRes) {
         const req = intervals.map(d => d.requiredAgents);
         const lbl = intervals.map(d => d.intervalo);
-        baseRes = calculateShifts(req, lbl, dimEnabledShifts, opDays);
+        const w = getShiftWindowIndices(lbl);
+        baseRes = calculateShifts(req, lbl, dimEnabledShifts, opDays, w.minStart, w.maxStart);
       }
 
       const shiftRes = baseRes; // Fixed schedule for this day type
@@ -1220,9 +1244,10 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       if (selectedMonthlyDay && selectedMonthlyDay.shiftRes) {
         const maxCoverage = selectedMonthlyDay.shiftRes.coverage?.length > 0 ? Math.max(...selectedMonthlyDay.shiftRes.coverage) : 0;
         const totalMonthVol = optimizedMonthErlang.reduce((sum, d) => sum + d.volume, 0);
+        // requiredAgents já foi calculado com volume/numTelas, não dividir novamente
         return {
-          maxPAs: Math.ceil(maxCoverage / numTelas),
-          avgPAs: Math.ceil((selectedMonthlyDay.avgPAs || 0) / numTelas),
+          maxPAs: Math.ceil(maxCoverage),
+          avgPAs: Math.ceil(selectedMonthlyDay.avgPAs || 0),
           finalSla: selectedMonthlyDay.finalSla,
           totalMonthVol: Math.round(totalMonthVol / numTelas),
           numTelas: numTelas > 1 ? numTelas : undefined
@@ -1230,6 +1255,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       }
     }
 
+    // requiredAgents já foi calculado com volume/numTelas no erlang worker
     const maxPAs = Math.max(...erlangData.map(d => d.requiredAgents));
 
     const activeIntervals = erlangData.filter(d => !d.isClosed && d.volume > 0);
@@ -1245,8 +1271,8 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     const totalMonthVol = optimizedMonthErlang.reduce((sum, d) => sum + d.volume, 0);
 
     return { 
-      maxPAs: Math.ceil(maxPAs / numTelas), 
-      avgPAs: Math.ceil(avgPAs / numTelas), 
+      maxPAs: Math.ceil(maxPAs), 
+      avgPAs: Math.ceil(avgPAs), 
       finalSla: weightedSla, 
       totalMonthVol: Math.round(totalMonthVol / numTelas),
       numTelas: numTelas > 1 ? numTelas : undefined
@@ -1269,8 +1295,9 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     const intervalLabels = erlangData.map(d => d.intervalo);
 
     const opDays = 7 - (dimOpHours.sundays.closed ? 1 : 0) - (dimOpHours.saturdays.closed ? 1 : 0);
-    return calculateShifts(requiredAgents, intervalLabels, dimEnabledShifts, opDays);
-  }, [erlangData, dimEnabledShifts, dimStrategy, monthlyShiftSchedules, dimSelectedDay, monthComparisons, monthForecastData]);
+    const { minStart: sMin, maxStart: sMax } = getShiftWindowIndices(intervalLabels);
+    return calculateShifts(requiredAgents, intervalLabels, dimEnabledShifts, opDays, sMin, sMax);
+  }, [erlangData, dimEnabledShifts, dimStrategy, monthlyShiftSchedules, dimSelectedDay, monthComparisons, monthForecastData, dimOpHours]);
 
   // ---- Alocação Automática 06:20 | 08:12 ----
   const shiftAllocation612_812 = useMemo((): ShiftAllocationResult | null => {
@@ -1289,7 +1316,13 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
     if (opCfg.closed) return null;
 
-    return allocateShifts612_812(required, labels, opCfg.start, opCfg.end);
+    // Restringir janela de início de turnos: 06:00 a 17:40
+    const { minStart, maxStart } = getShiftWindowIndices(labels);
+    const effectiveStart = labels[minStart] || '06:00';
+    const effectiveEnd = labels[Math.min(maxStart + 1, labels.length - 1)] || '17:50';
+    if (effectiveStart >= effectiveEnd) return null;
+
+    return allocateShifts612_812(required, labels, effectiveStart, effectiveEnd);
   }, [erlangData, dimOpHours, dimSelectedDay, monthComparisons, monthForecastData]);
 
   // WFM Cost Estimate
@@ -1319,7 +1352,8 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     if (erlangData.length === 0) return [];
     const required = erlangData.map(d => d.requiredAgents);
     const labels = erlangData.map(d => d.intervalo);
-    return compareShiftCombinations(required, labels, costPerAgent, overheadPercent);
+    const { minStart: cMin, maxStart: cMax } = getShiftWindowIndices(labels);
+    return compareShiftCombinations(required, labels, costPerAgent, overheadPercent, 7, cMin, cMax);
   }, [erlangData, costPerAgent, overheadPercent]);
 
   // WFM Metrics from backend stats
@@ -1344,10 +1378,11 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
     const requiredAgents = erlangData.map(d => d.requiredAgents);
     const intervalLabels = erlangData.map(d => d.intervalo);
+    const { minStart: oMin, maxStart: oMax } = getShiftWindowIndices(intervalLabels);
 
     const results = combinations.map(combo => {
       const opDays = 7 - (dimOpHours.sundays.closed ? 1 : 0) - (dimOpHours.saturdays.closed ? 1 : 0);
-      const sim = calculateShifts(requiredAgents, intervalLabels, combo, opDays);
+      const sim = calculateShifts(requiredAgents, intervalLabels, combo, opDays, oMin, oMax);
       return {
         combo,
         totalMonthlyHC: sim.totalMonthlyHC,
@@ -1374,6 +1409,10 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     for (let i = 0; i < erlangData.length; i += 3) {
       const chunk = erlangData.slice(i, i + 3);
       if (chunk.length === 0) continue;
+
+      // Filtrar chunks onde todos os intervalos estão fechados (fora do horário de operação)
+      const allClosed = chunk.every((r: any) => r.isClosed);
+      if (allClosed) continue;
 
       const sumVol = chunk.reduce((sum: number, r: any) => sum + r.volume, 0);
       const maxReqAgents = Math.max(...chunk.map((r: any) => r.requiredAgents));
@@ -1410,6 +1449,10 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     for (let i = 0; i < erlangData.length; i += 3) {
       const chunk = erlangData.slice(i, i + 3);
       if (chunk.length === 0) continue;
+
+      // Filtrar chunks onde todos os intervalos estão fechados
+      const allClosed = chunk.every((r: any) => r.isClosed);
+      if (allClosed) continue;
 
       const maxReqAgents = Math.max(...chunk.map((r: any) => r.requiredAgents));
       const avgOccupancy = chunk.reduce((sum: number, r: any) => sum + (r.occupancy || 0), 0) / chunk.length;
