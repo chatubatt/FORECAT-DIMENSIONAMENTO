@@ -154,6 +154,17 @@ const getWorkdays = (year: number, month: number) => {
 
 export const defaultShrinkage = { abs: 8.2, nr17: 8.63, treinamento: 1.64, turnover: 0.0, outros: 0.0 };
 
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
 export default function Dashboard() {
   const [forecastData, setForecastData] = useState<DailyForecast[]>([]);
   const [stats, setStats] = useState<HistoryStats | null>(null);
@@ -195,7 +206,6 @@ export default function Dashboard() {
   });
 
 
-  const [dimMaxOccupancy, setDimMaxOccupancy] = useState<number>(85);
   const [dimFixedAgents, setDimFixedAgents] = useState<number | ''>('');
   const [dimTma, setDimTma] = useState<number | ''>('');
   const [dimFixedVolume, setDimFixedVolume] = useState<number | ''>('');
@@ -668,7 +678,22 @@ export default function Dashboard() {
   };
 
   // --- Dimensionamento (Erlang) Logic ---
+  
+  const erlangInputs = useMemo(() => ({
+    activeTab, monthForecastData, dimTargetSlaPercent, dimTargetSlaTime, 
+    dimShrinkage, dimFixedAgents, dimTma, dimStrategy, dimOpHours, 
+    dimFixedVolume, dimCurveType, stats
+  }), [activeTab, monthForecastData, dimTargetSlaPercent, dimTargetSlaTime, 
+       dimShrinkage, dimFixedAgents, dimTma, dimStrategy, dimOpHours, 
+       dimFixedVolume, dimCurveType, stats]);
+
+  const debouncedErlangInputs = useDebounce(erlangInputs, 300);
+
   const optimizedMonthErlang = useMemo(() => {
+    const { activeTab, monthForecastData, dimTargetSlaPercent, dimTargetSlaTime, 
+            dimShrinkage, dimFixedAgents, dimTma, dimStrategy, dimOpHours, 
+            dimFixedVolume, dimCurveType, stats } = debouncedErlangInputs;
+
     if (activeTab !== 'dimensionamento' || monthForecastData.length === 0) return [];
 
     // NOVO: Aplicar Curva de Distribuição Selecionada
@@ -732,13 +757,13 @@ export default function Dashboard() {
       targetSlaPercent: dimTargetSlaPercent / 100,
       targetSlaTime: dimTargetSlaTime,
       shrinkage: dimShrinkage / 100,
-      maxOccupancy: dimMaxOccupancy / 100,
+      maxOccupancy: 0.85,
       fixedAgents: dimFixedAgents === '' ? undefined : Number(dimFixedAgents),
       fixedTma: dimTma === '' ? undefined : Number(dimTma)
     };
 
     return calculateStaffingStrategy(forecastToUse as any[], inputs, dimStrategy, dimOpHours);
-  }, [activeTab, monthForecastData, dimTargetSlaPercent, dimTargetSlaTime, dimShrinkage, dimMaxOccupancy, dimFixedAgents, dimTma, dimStrategy, dimOpHours, dimFixedVolume, dimCurveType, stats]);
+  }, [debouncedErlangInputs]);
 
   const erlangData = useMemo(() => {
     if (optimizedMonthErlang.length === 0) return [];
@@ -3231,7 +3256,7 @@ export default function Dashboard() {
 
             {dimSubTab === 'escala' && (<>
               <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-slate-700/50">
-                <div className="grid grid-cols-2 md:grid-cols-7 gap-6 mb-6">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-6 mb-6">
                   <div>
                     <label className="block text-sm text-slate-400 mb-1">Curva de Distribuição</label>
                     <select
@@ -3291,10 +3316,6 @@ export default function Dashboard() {
                   <div>
                     <label className="block text-sm text-slate-400 mb-1">TMA (s)</label>
                     <input type="number" min="0" placeholder="Auto" value={dimTma} onChange={e => setDimTma(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-600" />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-slate-400 mb-1">Ocupação Máx (%)</label>
-                    <input type="number" min="50" max="100" value={dimMaxOccupancy} onChange={e => setDimMaxOccupancy(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" />
                   </div>
                   <div>
                     <label className="block text-sm text-amber-400 mb-1" title="Forçar um volume total para o mês mantendo a curva">Vol. Fixo</label>
@@ -3867,7 +3888,7 @@ export default function Dashboard() {
                                 <td className="px-2 py-1 border-r border-slate-200">{Math.round(row.tmo)}</td>
                                 <td className="px-2 py-1 border-r border-slate-200 font-bold text-slate-600 bg-slate-100/50">{row.requiredAgents}</td>
                                 <td className="px-2 py-1 border-r border-slate-200">
-                                  <span className={row.occupancy > dimMaxOccupancy ? 'text-red-600 font-bold' : ''}>
+                                  <span className={row.occupancy > 85 ? 'text-red-600 font-bold' : ''}>
                                     {row.occupancy.toFixed(1)}%
                                   </span>
                                 </td>
