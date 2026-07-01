@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, BarChart, Bar, ComposedChart } from 'recharts';
 import { UploadCloud, Activity, Clock, CalendarDays, TrendingUp, Users } from 'lucide-react';
-import { calculateStaffingStrategy, evaluateErlangConfig, type SlaStrategy, type OperatingHoursConfig } from './utils/erlang';
+import { evaluateErlangConfig, type SlaStrategy, type OperatingHoursConfig, type ErlangResult } from './utils/erlang';
 import { calculateShifts, type ShiftType, AVAILABLE_SHIFTS, allocateShifts612_812, type ShiftAllocationResult } from './utils/shifts';
 
 interface IntervalForecast {
@@ -56,6 +56,14 @@ interface BaselineMesStat {
 }
 
 
+interface OptimizedMonthErlangItem extends ErlangResult {
+  data: string;
+  intervalo: string;
+  volume: number;
+  tmo: number;
+  coverage: string;
+  isClosed?: boolean;
+}
 
 interface ModeloTestado {
   modelo: string;
@@ -689,14 +697,39 @@ export default function Dashboard() {
 
   const debouncedErlangInputs = useDebounce(erlangInputs, 300);
 
-  const optimizedMonthErlang = useMemo(() => {
+  const [optimizedMonthErlang, setOptimizedMonthErlang] = useState<OptimizedMonthErlangItem[]>([]);
+  const [isCalculatingErlang, setIsCalculatingErlang] = useState<boolean>(false);
+  const erlangWorkerRef = useRef<Worker | null>(null);
+
+  useEffect(() => {
+    erlangWorkerRef.current = new Worker(new URL('./workers/erlangWorker.ts', import.meta.url), { type: 'module' });
+    
+    erlangWorkerRef.current.onmessage = (event) => {
+      if (event.data.success) {
+        setOptimizedMonthErlang(event.data.result);
+      } else {
+        console.error("Worker error:", event.data.error);
+      }
+      setIsCalculatingErlang(false);
+    };
+
+    return () => {
+      erlangWorkerRef.current?.terminate();
+    };
+  }, []);
+
+  useEffect(() => {
     const { activeTab, monthForecastData, dimTargetSlaPercent, dimTargetSlaTime, 
             dimShrinkage, dimFixedAgents, dimTma, dimStrategy, dimOpHours, 
             dimFixedVolume, dimCurveType, stats } = debouncedErlangInputs;
 
-    if (activeTab !== 'dimensionamento' || monthForecastData.length === 0) return [];
+    if (activeTab !== 'dimensionamento' || monthForecastData.length === 0) {
+      setOptimizedMonthErlang([]);
+      return;
+    }
 
-    // NOVO: Aplicar Curva de Distribuição Selecionada
+    setIsCalculatingErlang(true);
+
     let forecastToUse = monthForecastData;
     if (dimCurveType !== 'padrao' && stats?.curvas_distribuicao?.[dimCurveType]) {
       const curve = stats?.curvas_distribuicao?.[dimCurveType] || {};
@@ -726,7 +759,6 @@ export default function Dashboard() {
       });
     }
 
-    // NOVO: Aplicar Volume Fixo Mensal se existir
     if (dimFixedVolume !== '') {
       const fixedVolMonth = Number(dimFixedVolume);
 
@@ -749,11 +781,10 @@ export default function Dashboard() {
       }
     }
 
-    // Calcula para o mês inteiro aplicando a estratégia escolhida e o horário de funcionamento
     const inputs = {
-      volume: 0, // Ignorado pois usaremos do intervalo
-      tmo: dimTargetSlaTime, // Fallback se não tiver
-      intervalSeconds: 600, // 10 minutes intervals
+      volume: 0,
+      tmo: dimTargetSlaTime,
+      intervalSeconds: 600,
       targetSlaPercent: dimTargetSlaPercent / 100,
       targetSlaTime: dimTargetSlaTime,
       shrinkage: dimShrinkage / 100,
@@ -762,7 +793,12 @@ export default function Dashboard() {
       fixedTma: dimTma === '' ? undefined : Number(dimTma)
     };
 
-    return calculateStaffingStrategy(forecastToUse as any[], inputs, dimStrategy, dimOpHours);
+    erlangWorkerRef.current?.postMessage({
+      forecastToUse,
+      inputs,
+      dimStrategy,
+      dimOpHours
+    });
   }, [debouncedErlangInputs]);
 
   const erlangData = useMemo(() => {
@@ -3219,6 +3255,11 @@ export default function Dashboard() {
             <div className="flex justify-between items-end border-b border-slate-700 pb-2">
               <h2 className="text-2xl font-bold flex items-center gap-2 text-orange-400">
                 <Users size={28} /> Dimensionamento Erlang C
+                {isCalculatingErlang && (
+                  <span className="ml-4 flex items-center gap-2 text-sm text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full animate-pulse border border-amber-500/20">
+                    <Activity size={16} className="animate-spin" /> Processando matemática pesada...
+                  </span>
+                )}
               </h2>
 
               <div className="flex items-center gap-2">
