@@ -882,7 +882,9 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     let minStart = 0;
     let maxStart = labels.length - 1;
     const [sH, sM] = opStart.split(':').map(Number);
-    const startMins = (isNaN(sH) ? 0 : sH) * 60 + (isNaN(sM) ? 0 : sM);
+    // Trava de entradas: nenhuma escala pode começar antes das 06:00 (360 minutos), 
+    // mesmo se o Horário de Operação for configurado para 00:00.
+    const startMins = Math.max(360, (isNaN(sH) ? 0 : sH) * 60 + (isNaN(sM) ? 0 : sM));
     const [eH, eM] = opEnd.split(':').map(Number);
     let endMins = (isNaN(eH) ? 23 : eH) * 60 + (isNaN(eM) ? 59 : eM);
     if (opEnd === '00:00') endMins = 1440; // Especial case for midnight close
