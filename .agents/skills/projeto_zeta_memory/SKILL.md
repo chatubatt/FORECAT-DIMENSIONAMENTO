@@ -34,6 +34,7 @@ description: "Sempre que estiver trabalhando no Projeto Zeta, consulte esta mem�
 ## 5. Algoritmo de Distribuição de Escalas (`shifts.ts`)
 - **Resolução de 10 minutos**: A interface e o motor do algoritmo trabalham em intervalos exatos de 10 em 10 minutos. Gráficos podem ser agrupados em 30 min por estética, mas as tabelas mantêm granularidade de 10 min.
 - **Cálculo de Escala Guloso (Staggering)**: Os algoritmos `calculateShifts` e `allocateShifts612_812` usam uma lógica baseada no cálculo de *Useful Coverage* (cobertura útil). O algoritmo não empilha todos os turnos no mesmo horário, mas escalona os turnos pontuando onde os intervalos exigem mais agentes (sem sobreposição inútil).
+- **Trava Absoluta de Entradas**: A visualização de intervalos (ex: gráficos operando 24h a partir das 00:00) foi totalmente desacoplada da regra de entrada de agentes. Para o algoritmo guloso, existe uma **trava inegociável de 06:00 (360 minutos)** como horário mínimo para início de qualquer turno, independentemente de haver demanda ou configuração visual de 24h para exibição.
 - **Vazamento de Turnos**: Turnos alocados jamais podem estourar o horário final de fechamento da operação (`opEndIdx`).
 
 ## Instruções para o Agente
