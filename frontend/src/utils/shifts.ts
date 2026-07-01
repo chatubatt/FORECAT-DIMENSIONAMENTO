@@ -265,9 +265,11 @@ export function allocateShifts612_812(
     for (const cand of candidates) {
       if (cand.start > peakIdx || cand.end <= peakIdx) continue;
       let reduction = 0;
+      let zeroDeficit = 0;
       const limit = Math.min(cand.end, n);
       for (let j = cand.start; j < limit; j++) {
-        reduction += Math.min(deficit[j], 1) * deficit[j];
+        reduction += deficit[j];
+        if (deficit[j] === 0) zeroDeficit++;
       }
       const validDuration = Math.max(1, limit - cand.start);
       let score = reduction / validDuration;
@@ -275,6 +277,14 @@ export function allocateShifts612_812(
       // Tie breaker: reward longer useful work (reduces HC) but penalize wasted intervals outside operating window
       const wasted = cand.duration - validDuration;
       score += (validDuration * 0.0001) - (wasted * 0.0001);
+      
+      // Penalize overstaffing (zero deficit intervals)
+      score -= (zeroDeficit * 0.01);
+      
+      // Center shift around peak to break ties and avoid pushing shifts too early
+      const shiftCenter = (cand.start + limit) / 2;
+      const distanceToPeak = Math.abs(shiftCenter - peakIdx);
+      score -= (distanceToPeak * 0.0001);
 
       if (score > bestScore) { bestScore = score; bestCand = cand; }
     }
