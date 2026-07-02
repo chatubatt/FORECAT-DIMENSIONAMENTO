@@ -770,31 +770,25 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   const [isCalculatingErlang, setIsCalculatingErlang] = useState<boolean>(false);
   const erlangWorkerRef = useRef<Worker | null>(null);
 
-  useEffect(() => {
-    erlangWorkerRef.current = new Worker(new URL('./workers/erlangWorker.ts', import.meta.url), { type: 'module' });
-    
-    erlangWorkerRef.current.onmessage = (event) => {
-      if (event.data.success) {
-        setOptimizedMonthErlang(event.data.result);
-      } else {
-        console.error("Worker error:", event.data.error);
-      }
-      setIsCalculatingErlang(false);
-    };
 
-    return () => {
-      erlangWorkerRef.current?.terminate();
-    };
-  }, []);
 
+
+  // Cria um Worker novo a cada cálculo e termina o anterior para evitar
+  // "message channel closed before a response was received"
   useEffect(() => {
-    const { activeTab, monthForecastData, dimTargetSlaPercent, dimTargetSlaTime, 
-            dimShrinkage, dimFixedAgents, dimTma, dimStrategy, dimOpHours, 
+    const { activeTab, monthForecastData, dimTargetSlaPercent, dimTargetSlaTime,
+            dimShrinkage, dimFixedAgents, dimTma, dimStrategy, dimOpHours,
             dimFixedVolume, dimCurveType, stats } = debouncedErlangInputs;
 
     if (activeTab !== 'dimensionamento' || monthForecastData.length === 0) {
       setOptimizedMonthErlang([]);
       return;
+    }
+
+    // Terminar worker anterior se ainda estiver rodando
+    if (erlangWorkerRef.current) {
+      erlangWorkerRef.current.terminate();
+      erlangWorkerRef.current = null;
     }
 
     setIsCalculatingErlang(true);
@@ -863,13 +857,38 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       numTelas: dimQuantidadeTelas !== '' && Number(dimQuantidadeTelas) > 1 ? Number(dimQuantidadeTelas) : undefined
     };
 
-    erlangWorkerRef.current?.postMessage({
-      forecastToUse,
-      inputs,
-      dimStrategy,
-      dimOpHours
-    });
+    // Criar Worker novo para este cálculo
+    const worker = new Worker(new URL('./workers/erlangWorker.ts', import.meta.url), { type: 'module' });
+    erlangWorkerRef.current = worker;
+
+    worker.onmessage = (event) => {
+      // Ignorar respostas de workers que já foram substituídos
+      if (erlangWorkerRef.current !== worker) return;
+      if (event.data.success) {
+        setOptimizedMonthErlang(event.data.result);
+      } else {
+        console.error('Worker error:', event.data.error);
+      }
+      setIsCalculatingErlang(false);
+    };
+
+    worker.onerror = (err) => {
+      if (erlangWorkerRef.current !== worker) return;
+      console.error('Worker onerror:', err);
+      setIsCalculatingErlang(false);
+    };
+
+    worker.postMessage({ forecastToUse, inputs, dimStrategy, dimOpHours });
+
+    return () => {
+      // Cleanup: terminar worker se o efeito for re-executado antes da resposta
+      worker.terminate();
+      if (erlangWorkerRef.current === worker) {
+        erlangWorkerRef.current = null;
+      }
+    };
   }, [debouncedErlangInputs]);
+
 
   const erlangData = useMemo(() => {
     if (optimizedMonthErlang.length === 0) return [];
