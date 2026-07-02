@@ -97,11 +97,13 @@ export function calculateShifts(
     let bestStartIndex = 0;
 
     for (const shift of enabledShifts) {
-      const minStart = Math.max(minStartIdx, peakIdx - shift.intervalsCovered + 1);
-      const effectiveMaxStart = Math.min(maxStartIdx, peakIdx, Math.max(0, numIntervals - shift.intervalsCovered));
+      let startIter = Math.max(minStartIdx, peakIdx - shift.intervalsCovered + 1);
+      let endIter = Math.min(maxStartIdx, peakIdx, Math.max(0, numIntervals - shift.intervalsCovered));
       
-      const startIter = minStart <= effectiveMaxStart ? minStart : minStartIdx;
-      const endIter = minStart <= effectiveMaxStart ? effectiveMaxStart : Math.min(maxStartIdx, Math.max(0, numIntervals - shift.intervalsCovered));
+      if (startIter > endIter) {
+        startIter = minStartIdx;
+        endIter = Math.min(maxStartIdx, Math.max(0, numIntervals - shift.intervalsCovered));
+      }
       
       for (let s = startIter; s <= endIter; s++) {
         let useful = 0;
@@ -116,6 +118,9 @@ export function calculateShifts(
             wasted++;
           }
         }
+        
+        if (useful === 0) continue; // Prevent infinite loops placing useless shifts
+
 // Penalize wasted coverage outside operating hours
         const overflow = shift.intervalsCovered - (limit - s);
         wasted += overflow;
@@ -333,31 +338,39 @@ export function allocateShifts612_812(
 
     for (const cand of candidates) {
       if (cand.start > peakIdx || cand.end <= peakIdx) continue;
-      let useful = 0;
-      let wasted = 0;
       let reduction = 0;
       const limit = Math.min(cand.end, n);
       for (let j = cand.start; j < limit; j++) {
-        if (deficit[j] > 0) {
-          useful++;
-          reduction += deficit[j];
-        } else {
-          wasted++;
-        }
+        reduction += Math.min(deficit[j], 1) * deficit[j];
       }
+      if (reduction === 0) continue;
+
+      const validDuration = Math.max(1, limit - cand.start);
+      let score = reduction / validDuration;
       
-      const overflow = cand.duration - (limit - cand.start);
-      wasted += overflow;
-      
-      let score = useful - (wasted * 1.5);
-      
-      score += (reduction * 0.001);
-      
-      const shiftCenter = (cand.start + limit) / 2;
-      const distanceToPeak = Math.abs(shiftCenter - peakIdx);
-      score -= (distanceToPeak * 0.0001);
+      const wasted = cand.duration - validDuration;
+      score += (validDuration * 0.0001) - (wasted * 0.0001);
 
       if (score > bestScore) { bestScore = score; bestCand = cand; }
+    }
+
+    if (!bestCand) {
+      // Fallback: if no candidate covers the exact peak, pick any candidate that reduces the overall deficit
+      for (const cand of candidates) {
+        let reduction = 0;
+        const limit = Math.min(cand.end, n);
+        for (let j = cand.start; j < limit; j++) {
+          reduction += Math.min(deficit[j], 1) * deficit[j];
+        }
+        if (reduction === 0) continue;
+
+        const validDuration = Math.max(1, limit - cand.start);
+        let score = reduction / validDuration;
+        const wasted = cand.duration - validDuration;
+        score += (validDuration * 0.0001) - (wasted * 0.0001);
+
+        if (score > bestScore) { bestScore = score; bestCand = cand; }
+      }
     }
 
     if (!bestCand) break;
