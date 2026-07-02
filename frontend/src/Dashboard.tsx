@@ -4324,39 +4324,39 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                             <th className="px-2 py-2">AD. NOT</th>
                           </tr>
                         </thead>
-                        <tbody className="text-center bg-white text-slate-800 text-[11px]">
+                        <tbody className="text-center text-[11px]">
                           {(dimShowConsolidated ? consolidatedSchedules : monthlyShiftSchedules).map((row, i) => (
-                            <tr key={i} className={`border-b border-slate-200 hover:bg-slate-50 ${row.data === dimSelectedDay ? 'bg-blue-50 font-bold' : ''} ${row.isConsolidated ? 'bg-slate-100 font-medium' : ''}`}>
-                              <td className="px-2 py-1 border-r border-slate-200 whitespace-nowrap">
+                            <tr key={i} className={`border-b border-[rgba(255,255,255,0.05)] ${row.data === dimSelectedDay ? 'bg-blue-900/30 font-bold' : ''} ${row.isConsolidated ? 'bg-[var(--color-bg-elevated)] font-medium text-[12px]' : ''}`}>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] whitespace-nowrap">
                                 {row.isConsolidated ? row.tipo : new Date(row.data + "T00:00:00").toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
                               </td>
-                              <td className="px-2 py-1 border-r border-slate-200 lowercase">
-                                {new Date(row.data + "T00:00:00").toLocaleDateString('pt-BR', { weekday: 'short' })}
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] lowercase">
+                                {row.isConsolidated ? '-' : new Date(row.data + "T00:00:00").toLocaleDateString('pt-BR', { weekday: 'short' })}
                               </td>
-                              <td className="px-2 py-1 border-r border-slate-200">{row.dmmRank}</td>
-                              <td className="px-2 py-1 border-r border-slate-200">{row.percDmm?.toFixed(2)}%</td>
-                              <td className="px-2 py-1 border-r border-slate-200">{row.totalVol}</td>
-                              <td className="px-2 py-1 border-r border-slate-200 text-blue-600 font-medium">{Math.round(row.totalTraffic || 0).toLocaleString('pt-BR')}</td>
-                              <td className="px-2 py-1 border-r border-slate-200">{row.tmoAvg}</td>
-                              <td className="px-2 py-1 border-r border-slate-200 text-slate-600">{row.maxPAs}</td>
-                              <td className="px-2 py-1 border-r border-slate-200 text-slate-600">{row.avgPAs}</td>
-                              <td className="px-2 py-1 border-r border-slate-200">{row.avgPAs - row.maxPAs}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.dmmRank}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.percDmm?.toFixed(2)}%</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.totalVol}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-blue-400 font-medium">{Math.round(row.totalTraffic || 0).toLocaleString('pt-BR')}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.tmoAvg}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-slate-400">{row.maxPAs}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-slate-400">{row.avgPAs}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.avgPAs - row.maxPAs}</td>
                               {AVAILABLE_SHIFTS.filter(s => dimEnabledShifts.includes(s.type)).map(s => (
-                                <td key={s.type} className="px-2 py-1 border-r border-slate-200 font-semibold text-slate-700">
+                                <td key={s.type} className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-semibold text-yellow-100">
                                   {row.fixedHiredHC[s.type] || 0}
                                 </td>
                               ))}
-                              <td className="px-2 py-1 border-r border-slate-200">0</td>
-                              <td className={`px-2 py-1 border-r border-slate-200 font-bold ${row.finalSla === null ? 'bg-slate-200 text-slate-400' : row.finalSla < dimTargetSlaPercent ? 'bg-red-400 text-white' : row.finalSla > 85 ? 'bg-emerald-400 text-white' : 'bg-yellow-300 text-slate-800'}`}>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">0</td>
+                              <td className={`px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold ${row.finalSla === null ? 'bg-slate-800 text-slate-500' : row.finalSla < dimTargetSlaPercent ? 'bg-red-500/20 text-red-400' : row.finalSla > 85 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
                                 {row.finalSla === null ? '-' : `${row.finalSla.toFixed(1)}%`}
                               </td>
-                              <td className={`px-2 py-1 border-r border-slate-200 font-bold ${row.finalSla === null ? 'bg-slate-200 text-slate-400' : row.finalSla < dimTargetSlaPercent ? 'bg-red-400 text-white' : row.finalSla > 85 ? 'bg-emerald-400 text-white' : 'bg-yellow-300 text-slate-800'}`}>
+                              <td className={`px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold ${row.finalSla === null ? 'bg-slate-800 text-slate-500' : row.finalSla < dimTargetSlaPercent ? 'bg-red-500/20 text-red-400' : row.finalSla > 85 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
                                 {row.finalSla === null ? '-' : `${row.finalSla.toFixed(1)}%`}
                               </td>
-                              <td className="px-2 py-1 border-r border-slate-200 font-bold text-blue-600">{row.shiftRes?.coverage?.length > 0 ? Math.max(...row.shiftRes.coverage) : 0}</td>
-                              <td className="px-2 py-1 border-r border-slate-200 font-bold text-blue-600">{row.shiftRes?.coverage?.length > 0 ? Math.max(...row.shiftRes.coverage) : 0}</td>
-                              <td className="px-2 py-1 border-r border-slate-200">{row.avgOccupancy}%</td>
-                              <td className="px-2 py-1 border-r border-slate-200">{dimShrinkage.toFixed(2)}%</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold text-blue-400">{row.shiftRes?.coverage?.length > 0 ? Math.max(...row.shiftRes.coverage) : 0}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold text-blue-400">{row.shiftRes?.coverage?.length > 0 ? Math.max(...row.shiftRes.coverage) : 0}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.avgOccupancy}%</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{dimShrinkage.toFixed(2)}%</td>
                               <td className="px-2 py-1">0,0%</td>
                             </tr>
                           ))}
