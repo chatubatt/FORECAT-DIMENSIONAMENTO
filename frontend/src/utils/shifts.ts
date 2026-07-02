@@ -38,6 +38,31 @@ export interface ShiftScheduleResult {
   totalWastedMinutes: number; // total minutes of overstaffing
 }
 
+// Helper para verificar se o horário de início (entrada) e o tipo de turno são permitidos.
+// Regra: Entrada permitida às 00:00 e depois a partir das 06:00 até as 17:40.
+// Na madrugada (entrada 00:00), apenas escala 6x1 (06:20) é permitida.
+export function isStartAndShiftAllowed(timeStr: string, shiftType: ShiftType): boolean {
+  if (!timeStr) return false;
+  const [h, m] = timeStr.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return false;
+
+  const totalMins = h * 60 + m;
+
+  const isMidnight = totalMins === 0;
+  const isDayWindow = totalMins >= 360 && totalMins <= 1060; // 06:00 (360) a 17:40 (1060)
+
+  if (!isMidnight && !isDayWindow) {
+    return false;
+  }
+
+  // Na madrugada (00:00), apenas operador 6x1 (06:20) é permitido
+  if (isMidnight && shiftType !== '06:20') {
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * Greedy algorithm to schedule shifts to cover the required Erlang agents.
  */
@@ -118,6 +143,9 @@ export function calculateShifts(
       }
       
       for (let s = startIter; s <= endIter; s++) {
+        const timeStr = intervalLabels[s];
+        if (!isStartAndShiftAllowed(timeStr, shift.type)) continue;
+
         let useful = 0;
         let wasted = 0;
         let reduction = 0;
@@ -170,6 +198,9 @@ export function calculateShifts(
       for (const shift of enabledShifts) {
         const safeEnd = Math.min(maxStartIdx, Math.max(0, numIntervals - shift.intervalsCovered));
         for (let s = minStartIdx; s <= safeEnd; s++) {
+          const timeStr = intervalLabels[s];
+          if (!isStartAndShiftAllowed(timeStr, shift.type)) continue;
+
           let useful = 0;
           let wasted = 0;
           let reduction = 0;
@@ -377,13 +408,15 @@ export function allocateShifts612_812(
   const candidates: Candidate[] = [];
 
   for (let s = opStartIdx; s < opEndIdx; s++) {
+    const timeStr = intervalLabels[s];
+
     const end0620 = s + DURATION_0620;
-    if (end0620 <= opEndIdx) {
+    if (end0620 <= opEndIdx && isStartAndShiftAllowed(timeStr, '06:20')) {
       candidates.push({ start: s, end: end0620, type: '06:20', duration: DURATION_0620 });
     }
     
     const end0812 = s + DURATION_0812;
-    if (end0812 <= opEndIdx) {
+    if (end0812 <= opEndIdx && isStartAndShiftAllowed(timeStr, '08:12')) {
       candidates.push({ start: s, end: end0812, type: '08:12', duration: DURATION_0812 });
     }
   }
