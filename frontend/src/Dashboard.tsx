@@ -976,14 +976,16 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       const req = byDay[dmmSat].map(d => d.requiredAgents);
       const lbl = byDay[dmmSat].map(d => d.intervalo);
       const w = getShiftWindowIndices(lbl, dimOpHours.saturdays.start, dimOpHours.saturdays.end);
-      baseSchedules.saturday = calculateShifts(req, lbl, dimEnabledShifts, opDays, w.minStart, w.maxStart, maxPALimit, satVol > 0 ? forcedEntries : []);
+      const satShifts = dimEnabledShifts.filter(s => s !== '08:12' && s !== '05:15');
+      baseSchedules.saturday = calculateShifts(req, lbl, satShifts, opDays, w.minStart, w.maxStart, maxPALimit, satVol > 0 ? forcedEntries : []);
     }
     if (dmmSun) {
       const sunVol = byDay[dmmSun].reduce((s, d) => s + d.volume, 0);
       const req = byDay[dmmSun].map(d => d.requiredAgents);
       const lbl = byDay[dmmSun].map(d => d.intervalo);
       const w = getShiftWindowIndices(lbl, dimOpHours.sundays.start, dimOpHours.sundays.end);
-      baseSchedules.sunday = calculateShifts(req, lbl, dimEnabledShifts, opDays, w.minStart, w.maxStart, maxPALimit, sunVol > 0 ? forcedEntries : []);
+      const sunShifts = dimEnabledShifts.filter(s => s !== '08:12' && s !== '05:15');
+      baseSchedules.sunday = calculateShifts(req, lbl, sunShifts, opDays, w.minStart, w.maxStart, maxPALimit, sunVol > 0 ? forcedEntries : []);
     }
 
     const sampleLabels = dmmWeekdayLabels.length > 0 ? dmmWeekdayLabels : ['00:00'];
@@ -1119,11 +1121,18 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
         const req = intervals.map(d => d.requiredAgents);
         const lbl = intervals.map(d => d.intervalo);
         let opCfg = dimOpHours.weekdays;
-        if (dayOfWeek === 0) opCfg = dimOpHours.sundays;
-        else if (dayOfWeek === 6) opCfg = dimOpHours.saturdays;
+        let dayShifts = dimEnabledShifts;
+        if (dayOfWeek === 0) {
+          opCfg = dimOpHours.sundays;
+          dayShifts = dimEnabledShifts.filter(s => s !== '08:12' && s !== '05:15');
+        }
+        else if (dayOfWeek === 6) {
+          opCfg = dimOpHours.saturdays;
+          dayShifts = dimEnabledShifts.filter(s => s !== '08:12' && s !== '05:15');
+        }
         const w = getShiftWindowIndices(lbl, opCfg.start, opCfg.end);
         const dayVol = intervals.reduce((s, d) => s + d.volume, 0);
-        baseRes = calculateShifts(req, lbl, dimEnabledShifts, opDays, w.minStart, w.maxStart, maxPALimit, dayVol > 0 ? forcedEntries : []);
+        baseRes = calculateShifts(req, lbl, dayShifts, opDays, w.minStart, w.maxStart, maxPALimit, dayVol > 0 ? forcedEntries : []);
       }
 
       const shiftRes = baseRes; // Fixed schedule for this day type
