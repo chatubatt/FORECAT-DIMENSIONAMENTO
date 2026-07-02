@@ -115,12 +115,25 @@ export function calculateShifts(
 
   const numIntervals = requiredAgentsPerInterval.length;
   const coverage = new Array(numIntervals).fill(0);
-  // Travar a demanda máxima por intervalo no limite de PAs configurado.
-  // Isso evita que o algoritmo tente cobrir além do pico permitido,
-  // o que causaria sobreposições que estouravam o maxPALimit na cobertura real.
-  const required = requiredAgentsPerInterval.map(v =>
-    maxPALimit === Infinity ? v : Math.min(v, maxPALimit)
-  );
+  // Escalar o NEC proporcionalmente quando houver limite de PAs.
+  // Em vez de truncar todos os intervalos em maxPALimit (que geraria cobertura flat),
+  // reduzimos toda a demanda pelo fator (maxPALimit / pico), preservando a forma da curva.
+  // Isso garante que o pico da cobertura seja exatamente maxPALimit, e os demais
+  // intervalos seguem a curva de demanda real em escala menor.
+  let required: number[];
+  if (maxPALimit === Infinity) {
+    required = [...requiredAgentsPerInterval];
+  } else {
+    const peakDemand = Math.max(...requiredAgentsPerInterval, 1);
+    if (peakDemand <= maxPALimit) {
+      // Pico já está dentro do limite, não precisa escalar
+      required = [...requiredAgentsPerInterval];
+    } else {
+      // Escalar proporcionalmente para que o pico = maxPALimit
+      const scaleFactor = maxPALimit / peakDemand;
+      required = requiredAgentsPerInterval.map(v => Math.max(0, Math.round(v * scaleFactor)));
+    }
+  }
   
   const scheduleMap = new Map<string, ScheduledShift>(); // key: "type-startIndex"
 
@@ -451,8 +464,19 @@ export function allocateShifts612_812(
   const coverage = new Array(n).fill(0);
   const allocationMap = new Map<string, { start: number; end: number; type: '06:20' | '08:12'; duration: number; count: number }>();
 
-  // Travar a demanda máxima por intervalo no limite de PAs configurado.
-  const cappedNec = nec.map(v => maxPALimit === Infinity ? v : Math.min(v, maxPALimit));
+  // Escalar o NEC proporcionalmente quando houver limite de PAs (mesma lógica de calculateShifts).
+  let cappedNec: number[];
+  if (maxPALimit === Infinity) {
+    cappedNec = [...nec];
+  } else {
+    const peakDemand = Math.max(...nec, 1);
+    if (peakDemand <= maxPALimit) {
+      cappedNec = [...nec];
+    } else {
+      const scaleFactor = maxPALimit / peakDemand;
+      cappedNec = nec.map(v => Math.max(0, Math.round(v * scaleFactor)));
+    }
+  }
 
   const maxIterations = n * 500;
 
