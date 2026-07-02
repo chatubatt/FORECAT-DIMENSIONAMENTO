@@ -1528,6 +1528,17 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   const coverageChartData = useMemo(() => {
     if (!shiftSchedule || erlangData.length === 0) return [];
 
+    let satIntervals: any[] = [];
+    let sunIntervals: any[] = [];
+    if (monthlyShiftSchedules.length > 0) {
+      const saturdays = monthlyShiftSchedules.filter(r => new Date(r.data + "T00:00:00").getDay() === 6).sort((a,b) => b.totalVol - a.totalVol);
+      const sundays = monthlyShiftSchedules.filter(r => new Date(r.data + "T00:00:00").getDay() === 0).sort((a,b) => b.totalVol - a.totalVol);
+      const dmmSatData = saturdays[Math.min(dimDmmRank - 1, Math.max(0, saturdays.length - 1))];
+      const dmmSunData = sundays[Math.min(dimDmmRank - 1, Math.max(0, sundays.length - 1))];
+      if (dmmSatData) satIntervals = dmmSatData.intervals || [];
+      if (dmmSunData) sunIntervals = dmmSunData.intervals || [];
+    }
+
     const chunked = [];
     for (let i = 0; i < erlangData.length; i += chunkSize) {
       const chunk = erlangData.slice(i, i + chunkSize);
@@ -1554,16 +1565,23 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
         activeSum[s.type] = shiftSchedule.activePerInterval[i + peakIdx]?.[s.type] || 0;
       });
 
+      const satOpen = satIntervals.length > 0 ? satIntervals.slice(i, i + chunkSize).filter((r: any) => !r.isClosed) : [];
+      const sunOpen = sunIntervals.length > 0 ? sunIntervals.slice(i, i + chunkSize).filter((r: any) => !r.isClosed) : [];
+      const satReqAgents = satOpen.length > 0 ? Math.max(...satOpen.map((r: any) => r.requiredAgents || 0)) : 0;
+      const sunReqAgents = sunOpen.length > 0 ? Math.max(...sunOpen.map((r: any) => r.requiredAgents || 0)) : 0;
+
       chunked.push({
         intervalo: chunk[0].intervalo,
         required: maxReqAgents,
+        satRequired: satReqAgents,
+        sunRequired: sunReqAgents,
         coverage: maxCoverage,
         volume: sumVol,
         ...activeSum
       });
     }
     return chunked;
-  }, [erlangData, shiftSchedule, chunkSize]);
+  }, [erlangData, shiftSchedule, chunkSize, dimDmmRank, monthlyShiftSchedules]);
 
   const erlangChartData = useMemo(() => {
     if (erlangData.length === 0) return [];
@@ -4260,6 +4278,8 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                               );
                             })}
                             <Line yAxisId="left" type="stepAfter" dataKey="required" name="NEC BR. (PAs Erlang)" stroke="#000000" strokeWidth={3} dot={false} />
+                            <Line yAxisId="left" type="stepAfter" dataKey="satRequired" name="NEC Sábado (DMM)" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                            <Line yAxisId="left" type="stepAfter" dataKey="sunRequired" name="NEC Domingo (DMM)" stroke="#f43f5e" strokeWidth={2} strokeDasharray="5 5" dot={false} />
                           </ComposedChart>
                         </ResponsiveContainer>
                       </div>
