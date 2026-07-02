@@ -235,8 +235,12 @@ export function calculateShifts(
         
         // Primary Score: useful coverage minus wasted coverage
         // Modificado: favorecer turnos maiores se eles cobrirem mais demanda. 
-        // Penalidade menor para 'wasted' e bônus pelo tamanho do turno.
         let score = (useful * 2) - (wasted * 0.5) + (shift.intervalsCovered * 0.1);
+        
+        const hasExistingEntryAtThisStart = Array.from(scheduleMap.values()).some(item => item.startIndex === s);
+        if (hasExistingEntryAtThisStart) {
+          score += 2.0; // Bônus moderado para agrupar entradas (sem causar picos gigantes)
+        }
         
         // Secondary Score (Tie-breaker 1): favor covering the highest deficits (centers shift around peak)
         score += (reduction * 0.001);
@@ -290,6 +294,11 @@ export function calculateShifts(
           wasted += overflow;
           
           let score = (useful * 2) - (wasted * 0.5) + (shift.intervalsCovered * 0.1) + (reduction * 0.001);
+          
+          const hasExistingEntryAtThisStart = Array.from(scheduleMap.values()).some(item => item.startIndex === s);
+          if (hasExistingEntryAtThisStart) {
+            score += 2.0;
+          }
           
           if (score > bestScore) {
             bestScore = score;
