@@ -115,7 +115,12 @@ export function calculateShifts(
 
   const numIntervals = requiredAgentsPerInterval.length;
   const coverage = new Array(numIntervals).fill(0);
-  const required = [...requiredAgentsPerInterval];
+  // Travar a demanda máxima por intervalo no limite de PAs configurado.
+  // Isso evita que o algoritmo tente cobrir além do pico permitido,
+  // o que causaria sobreposições que estouravam o maxPALimit na cobertura real.
+  const required = requiredAgentsPerInterval.map(v =>
+    maxPALimit === Infinity ? v : Math.min(v, maxPALimit)
+  );
   
   const scheduleMap = new Map<string, ScheduledShift>(); // key: "type-startIndex"
 
@@ -446,10 +451,13 @@ export function allocateShifts612_812(
   const coverage = new Array(n).fill(0);
   const allocationMap = new Map<string, { start: number; end: number; type: '06:20' | '08:12'; duration: number; count: number }>();
 
+  // Travar a demanda máxima por intervalo no limite de PAs configurado.
+  const cappedNec = nec.map(v => maxPALimit === Infinity ? v : Math.min(v, maxPALimit));
+
   const maxIterations = n * 500;
 
   for (let iter = 0; iter < maxIterations; iter++) {
-    const deficit = nec.map((req, i) => Math.max(0, req - coverage[i]));
+    const deficit = cappedNec.map((req, i) => Math.max(0, req - coverage[i]));
     const totalDeficit = deficit.reduce((s, v) => s + v, 0);
     if (totalDeficit === 0) break;
 
