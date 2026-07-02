@@ -50,10 +50,28 @@ export function calculateShifts(
   maxStartIdx: number = Infinity
 ): ShiftScheduleResult {
   
-  // Clone to avoid mutating original, and update daysOffFactor dynamically
+  // Detectar a largura real dos intervalos a partir dos dados (ex: 10, 30 ou 60 min)
+  let intervalMinutes = 10;
+  if (intervalLabels.length > 1) {
+    const [h1, m1] = intervalLabels[0].split(':').map(Number);
+    const [h2, m2] = intervalLabels[1].split(':').map(Number);
+    if (!isNaN(h1) && !isNaN(m1) && !isNaN(h2) && !isNaN(m2)) {
+      const diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+      if (diff > 0 && diff <= 60) {
+        intervalMinutes = diff;
+      }
+    }
+  }
+
+  // Clone to avoid mutating original, and update daysOffFactor and intervalsCovered dynamically
   const enabledShifts = AVAILABLE_SHIFTS.filter(s => enabledShiftTypes.includes(s.type)).map(s => {
     const daysWorked = 7 / s.daysOffFactor;
-    return { ...s, daysOffFactor: Math.max(1.0, operatingDays / daysWorked) };
+    const intervals = Math.max(1, Math.ceil(s.durationMinutes / intervalMinutes));
+    return { 
+      ...s, 
+      intervalsCovered: intervals,
+      daysOffFactor: Math.max(1.0, operatingDays / daysWorked) 
+    };
   });
   if (enabledShifts.length === 0 || requiredAgentsPerInterval.length === 0) {
     return { 
@@ -244,7 +262,7 @@ export function calculateShifts(
         overstaffedIntervals++;
         const excess = cov - req;
         if (excess > maxOverstaff) maxOverstaff = excess;
-        totalWastedMinutes += excess * 10; // each interval is 10 minutes
+        totalWastedMinutes += excess * intervalMinutes; // each interval is dynamic minutes
       }
       if (cov < req) {
         understaffedIntervals++;
@@ -309,7 +327,20 @@ export function allocateShifts612_812(
   opStart: string,
   opEnd: string
 ): ShiftAllocationResult {
-  const INTERVAL_MINUTES = 10;
+  // Detectar a largura real dos intervalos a partir dos dados
+  let intervalMinutes = 10;
+  if (intervalLabels.length > 1) {
+    const [h1, m1] = intervalLabels[0].split(':').map(Number);
+    const [h2, m2] = intervalLabels[1].split(':').map(Number);
+    if (!isNaN(h1) && !isNaN(m1) && !isNaN(h2) && !isNaN(m2)) {
+      const diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+      if (diff > 0 && diff <= 60) {
+        intervalMinutes = diff;
+      }
+    }
+  }
+
+  const INTERVAL_MINUTES = intervalMinutes;
 
   const getHHMM = (startStr: string, offsetIntervals: number): string => {
     if (!startStr) return "00:00";
@@ -322,8 +353,8 @@ export function allocateShifts612_812(
 
   const n = nec.length;
 
-  const DURATION_0620 = 38; // 380 min
-  const DURATION_0812 = 49; // 492 min
+  const DURATION_0620 = Math.max(1, Math.ceil(380 / INTERVAL_MINUTES)); // 380 min
+  const DURATION_0812 = Math.max(1, Math.ceil(492 / INTERVAL_MINUTES)); // 492 min
 
   let opStartIdx = intervalLabels.indexOf(opStart);
   if (opStartIdx === -1) opStartIdx = 0;
