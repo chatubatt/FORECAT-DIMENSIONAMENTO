@@ -144,6 +144,39 @@ export function calculateShifts(
       }
     }
 
+    if (bestScore === -Infinity) {
+      // Fallback: If peak-centered logic failed, try ANY valid start time
+      for (const shift of enabledShifts) {
+        const safeEnd = Math.min(maxStartIdx, Math.max(0, numIntervals - shift.intervalsCovered));
+        for (let s = minStartIdx; s <= safeEnd; s++) {
+          let useful = 0;
+          let wasted = 0;
+          let reduction = 0;
+          const limit = Math.min(s + shift.intervalsCovered, numIntervals);
+          for (let j = s; j < limit; j++) {
+            if (required[j] > 0) {
+              useful++;
+              reduction += required[j];
+            } else {
+              wasted++;
+            }
+          }
+          if (useful === 0) continue;
+          
+          const overflow = shift.intervalsCovered - (limit - s);
+          wasted += overflow;
+          
+          let score = (useful * 2) - (wasted * 1.5) + (reduction * 0.001);
+          
+          if (score > bestScore) {
+            bestScore = score;
+            bestShift = shift;
+            bestStartIndex = s;
+          }
+        }
+      }
+    }
+
     if (bestScore === -Infinity) break;
 
     const key = `${bestShift.type}-${bestStartIndex}`;
