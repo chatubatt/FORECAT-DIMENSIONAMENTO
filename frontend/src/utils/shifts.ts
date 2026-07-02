@@ -763,6 +763,8 @@ export interface ShiftCombinationCost {
   estimatedCost: number;
   efficiency: number;
   costPerAgent: number;
+  /** HC mensal adicional de 6x1 necessário para cobrir finais de semana quando o combo não inclui 6x1 */
+  weekendExtra6x1HC: number;
 }
 
 export function compareShiftCombinations(
@@ -773,7 +775,9 @@ export function compareShiftCombinations(
   operatingDays: number = 7,
   minStartIdx: number = 0,
   maxStartIdx: number = Infinity,
-  maxPALimit: number = Infinity
+  maxPALimit: number = Infinity,
+  /** HC diário mínimo de 6x1 para cobrir finais de semana (apenas o pico de agentes do FDS) */
+  weekendMinDailyHC6x1: number = 0
 ): ShiftCombinationCost[] {
   // Test common combinations
   const combinations: ShiftType[][] = [
@@ -786,16 +790,37 @@ export function compareShiftCombinations(
     ['06:20', '08:12', '05:15'],
   ];
 
+  // Fator de conversionthat 6x1 - 7 dias/semana, 6 dias trabalhados => 7/6 de folga
+  const shift6x1 = AVAILABLE_SHIFTS.find(s => s.type === '06:20')!;
+  const shift6x1DaysOff = shift6x1 ? shift6x1.daysOffFactor : 7/6;
+
   return combinations.map(shifts => {
     const result = calculateShifts(requiredAgentsPerInterval, intervalLabels, shifts, operatingDays, minStartIdx, maxStartIdx, maxPALimit);
-    const totalCost = result.totalMonthlyHC * costPerAgentMonth * (1 + overheadPercent / 100);
+    
+    // Se o combo não inclui 6x1 mas há demanda de FDS, precisamos adicionar 6x1 extras para cobrir o FDS
+    const has6x1 = shifts.includes('06:20');
+    let weekendExtra6x1HC = 0;
+    if (!has6x1 && weekendMinDailyHC6x1 > 0) {
+      // Para cobrir os dias de FDS, precisamos de agentes 6x1 adicionais
+      // Como 6x1 trabalha 6 dias em 7, precisamos de ceil(weekendMinDailyHC6x1 * daysOffFactor) mensais
+      weekendExtra6x1HC = Math.ceil(weekendMinDailyHC6x1 * shift6x1DaysOff);
+    } else if (has6x1 && weekendMinDailyHC6x1 > 0) {
+      // Verifica se o 6x1 que o combo já tem é suficiente para cobrir FDS
+      const current6x1Daily = result.hcPerShiftType['06:20'] || 0;
+      const shortfall = Math.max(0, weekendMinDailyHC6x1 - current6x1Daily);
+      weekendExtra6x1HC = shortfall > 0 ? Math.ceil(shortfall * shift6x1DaysOff) : 0;
+    }
+    
+    const adjustedMonthlyHC = result.totalMonthlyHC + weekendExtra6x1HC;
+    const totalCost = adjustedMonthlyHC * costPerAgentMonth * (1 + overheadPercent / 100);
     return {
       shifts,
-      totalMonthlyHC: result.totalMonthlyHC,
+      totalMonthlyHC: adjustedMonthlyHC,
       totalDailyHC: result.totalDailyHC,
       estimatedCost: Math.round(totalCost),
       efficiency: result.efficiency,
-      costPerAgent: result.totalMonthlyHC > 0 ? Math.round(totalCost / result.totalMonthlyHC) : 0
+      costPerAgent: adjustedMonthlyHC > 0 ? Math.round(totalCost / adjustedMonthlyHC) : 0,
+      weekendExtra6x1HC
     };
   }).sort((a, b) => a.estimatedCost - b.estimatedCost);
 }

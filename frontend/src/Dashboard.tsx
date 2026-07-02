@@ -1437,8 +1437,20 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
     const maxPALimit = dimFixedAgents === '' ? Infinity : Number(dimFixedAgents);
     const { minStart: cMin, maxStart: cMax } = getShiftWindowIndices(labels, opCfg.start, opCfg.end);
-    return compareShiftCombinations(required, labels, costPerAgent, overheadPercent, 7, cMin, cMax, maxPALimit);
-  }, [erlangData, costPerAgent, overheadPercent, dimFixedAgents]);
+
+    // Calcular o HC diário mínimo de 6x1 necessário para cobrir o FDS
+    // Os turnos 5x2 e JA não trabalham no FDS, então o 6x1 precisa ser suficiente sozinho
+    let weekendMinDailyHC6x1 = 0;
+    if (monthlyShiftSchedules.length > 0) {
+      const saturdays = monthlyShiftSchedules.filter(r => new Date(r.data + 'T00:00:00').getDay() === 6).sort((a,b) => b.totalVol - a.totalVol);
+      const sundays = monthlyShiftSchedules.filter(r => new Date(r.data + 'T00:00:00').getDay() === 0).sort((a,b) => b.totalVol - a.totalVol);
+      const dmmSatHC = saturdays[0]?.shiftRes?.totalDailyHC || 0;
+      const dmmSunHC = sundays[0]?.shiftRes?.totalDailyHC || 0;
+      weekendMinDailyHC6x1 = Math.max(dmmSatHC, dmmSunHC);
+    }
+
+    return compareShiftCombinations(required, labels, costPerAgent, overheadPercent, 7, cMin, cMax, maxPALimit, weekendMinDailyHC6x1);
+  }, [erlangData, costPerAgent, overheadPercent, dimFixedAgents, monthlyShiftSchedules]);
 
   // WFM Metrics from backend stats
   const wfmMetrics = stats?.wfm_metrics || null;
@@ -3928,6 +3940,11 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                               <td className="py-2 px-2 font-medium">
                                 {row.shifts.map(s => AVAILABLE_SHIFTS.find(a => a.type === s)?.label?.split(' ')[0] || s).join(' + ')}
                                 {isCurrent && <span className="ml-2 text-xs text-blue-400">(Atual)</span>}
+                                {row.weekendExtra6x1HC > 0 && (
+                                  <span className="ml-2 text-xs text-amber-400" title="Requer 6x1 adicional para cobrir FDS">
+                                    +{row.weekendExtra6x1HC} 6x1 FDS
+                                  </span>
+                                )}
                               </td>
                               <td className="py-2 px-2 text-right">{row.totalDailyHC}</td>
                               <td className="py-2 px-2 text-right font-bold text-blue-400">{row.totalMonthlyHC}</td>
