@@ -326,7 +326,7 @@ export function calculateShifts(
           if (coverage[j] > necTarget[j]) benefit++;
           else cost++;
         }
-        const impact = benefit - cost * 3; // Penalizar criação de déficit
+        const impact = benefit - cost * 1.5; // Penalizar criação de déficit levemente
         if (impact > bestImpact) { bestImpact = impact; bestKey = key; }
       }
       if (bestKey !== null && bestImpact > 0) {

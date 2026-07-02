@@ -1004,7 +1004,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
             const interval = (intervals as any[])[idx];
             if (interval.volume === 0 || interval.isClosed) continue;
             const scheduledAgents = baseRes.coverage[idx] || 0;
-            const netAgents = Math.floor(scheduledAgents * (1 - (dimShrinkage / 100)));
+            const netAgents = scheduledAgents * (1 - (dimShrinkage / 100));
             const effectiveTmo = dimTma !== '' ? Number(dimTma) : interval.tmo;
             const traffic = (interval.volume / intervalSeconds) * effectiveTmo;
             const evalRes = evaluateErlangConfig(netAgents, traffic, effectiveTmo, dimTargetSlaTime, dimShrinkage / 100);
@@ -1041,7 +1041,6 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
             const scheduledAgents = baseRes.coverage[idx] || 0;
             netAgents = scheduledAgents * (1 - (dimShrinkage / 100));
           }
-          netAgents = Math.floor(netAgents);
 
           const effectiveTmo = dimTma !== '' ? Number(dimTma) : interval.tmo;
           const traffic = (interval.volume / intervalSeconds) * effectiveTmo;
@@ -1150,7 +1149,6 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
           const scheduledAgents = shiftRes.coverage[idx] || 0;
           netAgents = scheduledAgents * (1 - (dimShrinkage / 100));
         }
-        netAgents = Math.floor(netAgents);
 
         const effectiveTmo = dimTma !== '' ? Number(dimTma) : interval.tmo;
         const traffic = (interval.volume / intervalSeconds) * effectiveTmo;
@@ -4129,9 +4127,9 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                         const dmmRow = monthlyShiftSchedules.length > 0
                           ? [...monthlyShiftSchedules].sort((a, b) => (b.totalTraffic || 0) - (a.totalTraffic || 0))[0]
                           : null;
-                        const dmmSla = dmmRow ? ((dmmRow.finalSla || 0) * 100) : null;
-                        const dmmSlaOk = dmmSla !== null ? dmmSla >= dimTargetDmmSlaPercent : null;
-                        const monthlySlaOk = dimSummary ? ((dimSummary.finalSla || 0) * 100) >= dimTargetSlaPercent : null;
+                        const dmmSla = dmmRow ? (dmmRow.finalSla || 0) : null;
+                        const dmmSlaOk = dmmSla !== null && dmmSla >= dimTargetDmmSlaPercent;
+                        const monthlySlaOk = dimSummary ? (dimSummary.finalSla || 0) >= dimTargetSlaPercent : null;
 
                         const statusColor = overstaffRatio > 1.5
                           ? 'border-rose-500/60 bg-rose-900/15'
