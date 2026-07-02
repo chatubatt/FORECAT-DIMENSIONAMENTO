@@ -4428,7 +4428,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                             <th className="py-2 px-2 text-right text-xs">Erlang B (%)</th>
                           </tr>
                         </thead>
-                        <tbody className="text-center bg-white text-slate-800 text-[11px]">
+                        <tbody className="text-center text-[11px]">
                           {monthlyShiftSchedules.flatMap(daySchedule => {
                             const shiftSchedule = daySchedule.shiftRes;
                             const chunkedRows = [];
@@ -4470,34 +4470,34 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                             }
 
                             return chunkedRows.map((row, chunkIdx) => (
-                              <tr key={`${daySchedule.data}-${chunkIdx}`} className={`border-b border-slate-200 hover:bg-slate-50 ${daySchedule.data === dimSelectedDay ? 'bg-blue-50/30' : ''}`}>
-                                <td className="px-2 py-1 border-r border-slate-200 text-slate-500 font-medium">
+                              <tr key={`${daySchedule.data}-${chunkIdx}`} className={`border-b border-[rgba(255,255,255,0.05)] ${daySchedule.data === dimSelectedDay ? 'bg-blue-900/30' : ''}`}>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-slate-400 font-medium">
                                   {new Date(daySchedule.data + "T00:00:00").toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
                                 </td>
-                                <td className="px-2 py-1 border-r border-slate-200 font-semibold">{row.intervalo}</td>
-                                <td className="px-2 py-1 border-r border-slate-200">{Math.round(row.volume)}</td>
-                                <td className="px-2 py-1 border-r border-slate-200">{Math.round(row.tmo)}</td>
-                                <td className="px-2 py-1 border-r border-slate-200 font-bold text-slate-600 bg-slate-100/50">{row.requiredAgents}</td>
-                                <td className="px-2 py-1 border-r border-slate-200">
-                                  <span className={row.occupancy > 85 ? 'text-red-600 font-bold' : ''}>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-semibold">{row.intervalo}</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{Math.round(row.volume)}</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{Math.round(row.tmo)}</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold text-slate-400 bg-slate-800/50">{row.requiredAgents}</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">
+                                  <span className={row.occupancy > 85 ? 'text-red-400 font-bold' : ''}>
                                     {row.occupancy.toFixed(1)}%
                                   </span>
                                 </td>
-                                <td className={`px-2 py-1 border-r border-slate-200 font-bold ${row.serviceLevel < dimTargetSlaPercent ? 'bg-red-400 text-white' : row.serviceLevel > 85 ? 'bg-emerald-400 text-white' : 'bg-yellow-300 text-slate-800'}`}>
+                                <td className={`px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold ${row.serviceLevel < dimTargetSlaPercent ? 'bg-red-500/20 text-red-400' : row.serviceLevel > 85 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
                                   {row.serviceLevel.toFixed(1)}%
                                 </td>
-                                <td className="px-2 py-1 border-r border-slate-200 font-bold text-emerald-700 bg-emerald-50">
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold text-emerald-400 bg-emerald-900/20">
                                   {row.coverage}
                                 </td>
                                 {AVAILABLE_SHIFTS.map(s => {
                                   const entradas = row.entradasSum[s.type];
                                   return (
-                                    <td key={s.type} className={`px-2 py-1 border-r border-slate-200 ${entradas > 0 ? 'bg-purple-600 text-white font-bold' : 'text-slate-300'}`}>
+                                    <td key={s.type} className={`px-2 py-1 border-r border-[rgba(255,255,255,0.05)] ${entradas > 0 ? 'bg-purple-600/40 text-purple-200 font-bold' : 'text-slate-600'}`}>
                                       {entradas > 0 ? entradas : '-'}
                                     </td>
                                   );
                                 })}
-                                <td className={`px-2 py-1 border-r border-slate-200 text-xs ${(row.abandonRate || 0) > 5 ? 'text-rose-400 font-bold' : 'text-emerald-400'}`}>
+                                <td className={`px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-xs ${(row.abandonRate || 0) > 5 ? 'text-rose-400 font-bold' : 'text-emerald-400'}`}>
                                   {(row.abandonRate || 0).toFixed(1)}%
                                 </td>
                                 <td className="px-2 py-1 text-xs text-slate-400">
