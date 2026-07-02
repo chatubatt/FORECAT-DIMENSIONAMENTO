@@ -342,7 +342,7 @@ export function calculateStaffingStrategy(
   }
 
   // Determinar a janela operacional a partir da config do usuário (sem caps hardcoded)
-  const getEffectiveOpWindow = (dateStr: string): { startMins: number; endMins: number } | null => {
+  const getEffectiveOpWindow = (dateStr: string): { startMins: number; endMins: number; crossesMidnight?: boolean } | null => {
     const d = new Date(dateStr + "T00:00:00");
     const day = d.getDay();
     let hours;
@@ -353,13 +353,15 @@ export function calculateStaffingStrategy(
     if (hours.closed) return null;
 
     const cfgStart = parseIntervalToMinutes(hours.start);
-    const cfgEnd = parseIntervalToMinutes(hours.end);
+    // '00:00' como fim = meia-noite do dia seguinte = 1440 minutos (dia completo)
+    let cfgEnd = hours.end === '00:00' ? 1440 : parseIntervalToMinutes(hours.end);
+    // '23:59' como fim = inclui o último intervalo do dia (até 23:59 inclusive)
+    if (hours.end === '23:59') cfgEnd = 1440;
 
-    // Suportar janela que atravessa meia-noite (ex: 06:00-00:00)
-    // Se endMins <= startMins, a janela cruza meia-noite
-    if (cfgEnd <= cfgStart) {
+    // Suportar janela que atravessa meia-noite (ex: 22:00-06:00)
+    if (cfgEnd < cfgStart) {
       // Janela cruza meia-noite: qualquer horário >= start OU < end
-      return { startMins: cfgStart, endMins: cfgEnd, crossesMidnight: true } as any;
+      return { startMins: cfgStart, endMins: cfgEnd, crossesMidnight: true };
     }
 
     return { startMins: cfgStart, endMins: cfgEnd };
@@ -377,10 +379,11 @@ export function calculateStaffingStrategy(
       let isClosed = false;
       if (!intMinsValid || !opWindow) {
         isClosed = true;
-      } else if ((opWindow as any).crossesMidnight) {
+      } else if (opWindow.crossesMidnight) {
         // Janela cruza meia-noite: operacional se >= start OU < end
         isClosed = !(intMins >= opWindow.startMins || intMins < opWindow.endMins);
       } else {
+        // Janela normal: inclui intervalos de startMins até endMins (exclusive, mas endMins já foi normalizado)
         isClosed = !(intMins >= opWindow.startMins && intMins < opWindow.endMins);
       }
       

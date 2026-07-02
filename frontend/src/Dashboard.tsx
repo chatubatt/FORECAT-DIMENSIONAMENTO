@@ -247,10 +247,11 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
   const [dimStrategy, setDimStrategy] = useState<SlaStrategy>('monthly_avg');
   const [dimOpHours, setDimOpHours] = useState<OperatingHoursConfig>({
-    weekdays: { start: '06:00', end: '00:00', closed: false },
-    saturdays: { start: '06:00', end: '14:00', closed: false },
-    sundays: { start: '00:00', end: '23:59', closed: true }
+    weekdays: { start: '00:00', end: '23:59', closed: false },
+    saturdays: { start: '00:00', end: '23:59', closed: false },
+    sundays: { start: '00:00', end: '23:59', closed: false }
   });
+
 
   const [dimEnabledShifts, setDimEnabledShifts] = useState<ShiftType[]>(['06:20', '07:12']);
 
