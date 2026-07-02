@@ -964,17 +964,22 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       const lbl = byDay[dmmWeekday].map(d => d.intervalo);
       baseSchedules.weekday = calculateShifts(req, lbl, dimEnabledShifts, opDays, wMin, wMax, maxPALimit);
     }
+    const weekendForces = [
+      { time: '00:00', count: 4 },
+      { time: '17:30', count: 4 }
+    ];
+
     if (dmmSat) {
       const req = byDay[dmmSat].map(d => d.requiredAgents);
       const lbl = byDay[dmmSat].map(d => d.intervalo);
       const w = getShiftWindowIndices(lbl, dimOpHours.saturdays.start, dimOpHours.saturdays.end);
-      baseSchedules.saturday = calculateShifts(req, lbl, dimEnabledShifts, opDays, w.minStart, w.maxStart, maxPALimit);
+      baseSchedules.saturday = calculateShifts(req, lbl, dimEnabledShifts, opDays, w.minStart, w.maxStart, maxPALimit, weekendForces);
     }
     if (dmmSun) {
       const req = byDay[dmmSun].map(d => d.requiredAgents);
       const lbl = byDay[dmmSun].map(d => d.intervalo);
       const w = getShiftWindowIndices(lbl, dimOpHours.sundays.start, dimOpHours.sundays.end);
-      baseSchedules.sunday = calculateShifts(req, lbl, dimEnabledShifts, opDays, w.minStart, w.maxStart, maxPALimit);
+      baseSchedules.sunday = calculateShifts(req, lbl, dimEnabledShifts, opDays, w.minStart, w.maxStart, maxPALimit, weekendForces);
     }
 
     const sampleLabels = dmmWeekdayLabels.length > 0 ? dmmWeekdayLabels : ['00:00'];

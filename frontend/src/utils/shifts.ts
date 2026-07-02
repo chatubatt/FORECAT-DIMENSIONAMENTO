@@ -20,6 +20,12 @@ export interface ScheduledShift {
   startTime: string;
   startIndex: number;
   count: number;
+  forcedCount?: number;
+}
+
+export interface ForcedEntry {
+  time: string;
+  count: number;
 }
 
 export interface ShiftScheduleResult {
@@ -73,7 +79,8 @@ export function calculateShifts(
   operatingDays: number = 7,
   minStartIdx: number = 0,
   maxStartIdx: number = Infinity,
-  maxPALimit: number = Infinity
+  maxPALimit: number = Infinity,
+  forceEntries: ForcedEntry[] = []
 ): ShiftScheduleResult {
   
   // Detectar a largura real dos intervalos a partir dos dados (ex: 10, 30 ou 60 min)
@@ -139,6 +146,35 @@ export function calculateShifts(
   const necTarget = [...required];
   
   const scheduleMap = new Map<string, ScheduledShift>(); // key: "type-startIndex"
+
+  // Aplicar as entradas forçadas (ex: mínimos no fim de semana)
+  for (const forced of forceEntries) {
+    const s = intervalLabels.findIndex(l => l === forced.time);
+    if (s === -1) continue;
+    
+    // Encontrar o melhor turno permitido para esse horário
+    const shiftTypeStr = enabledShifts.find(sh => isStartAndShiftAllowed(forced.time, sh.type))?.type || enabledShifts[0]?.type;
+    if (!shiftTypeStr) continue;
+    
+    const shift = enabledShifts.find(sh => sh.type === shiftTypeStr)!;
+    const key = `${shift.type}-${s}`;
+    
+    scheduleMap.set(key, {
+      shift,
+      startTime: forced.time,
+      startIndex: s,
+      count: forced.count,
+      forcedCount: forced.count
+    });
+
+    const limit = Math.min(s + shift.intervalsCovered, numIntervals);
+    for (let c = 0; c < forced.count; c++) {
+      for (let j = s; j < limit; j++) {
+        required[j]--;
+        coverage[j]++;
+      }
+    }
+  }
 
   const maxIterations = numIntervals * 500;
   for (let iter = 0; iter < maxIterations; iter++) {
@@ -316,7 +352,7 @@ export function calculateShifts(
       let bestKey: string | null = null;
       let bestImpact = -Infinity;
       for (const [key, entry] of scheduleMap) {
-        if (entry.count <= 0) continue;
+        if (entry.count <= (entry.forcedCount || 0)) continue;
         const end = Math.min(entry.startIndex + entry.shift.intervalsCovered, numIntervals);
         if (maxExcessIdx < entry.startIndex || maxExcessIdx >= end) continue;
         // Contar intervalos com excesso (benefício da remoção) e com déficit (custo)
