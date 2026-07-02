@@ -248,7 +248,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   });
 
 
-  const [dimEnabledShifts, setDimEnabledShifts] = useState<ShiftType[]>(['06:20', '07:12']);
+  const [dimEnabledShifts, setDimEnabledShifts] = useState<ShiftType[]>(['06:20', '08:12', '05:15']);
 
   // Calcula a média do shrinkage total para os turnos habilitados (usado na estimativa inicial)
   const dimShrinkage = useMemo(() => {
@@ -338,14 +338,8 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     // Map de minutos de pausa NR17 por turno
     const nr17Pauses: Record<string, number> = {
       '06:20': 40,
-      '07:12': 60,
       '08:12': 80,
-      '08:48': 80,
-      '06:00': 40,
-      '04:00': 20,
-      '05:15': 30,
-      '09:00': 90,
-      '12x36': 120
+      '05:15': 30
     };
 
     setDimShrinkageConfig(prev => {

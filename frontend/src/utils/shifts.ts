@@ -1,4 +1,4 @@
-export type ShiftType = '06:20' | '08:12' | '05:15' | '07:12' | '08:48' | '04:00' | '06:00' | '12x36' | '09:00';
+export type ShiftType = '06:20' | '08:12' | '05:15';
 
 export interface ShiftDefinition {
   type: ShiftType;
@@ -12,13 +12,7 @@ export interface ShiftDefinition {
 export const AVAILABLE_SHIFTS: ShiftDefinition[] = [
   { type: '06:20', label: '6h20 (6x1)', durationMinutes: 380, intervalsCovered: 38, daysOffFactor: 7/6, recommended: true },
   { type: '08:12', label: '8h12 (5x2)', durationMinutes: 492, intervalsCovered: 49, daysOffFactor: 7/5, recommended: true },
-  { type: '07:12', label: '7h12 (6x1)', durationMinutes: 432, intervalsCovered: 43, daysOffFactor: 7/6 },
-  { type: '08:48', label: '8h48 (5x2)', durationMinutes: 528, intervalsCovered: 53, daysOffFactor: 7/5 },
-  { type: '06:00', label: '6h00 (6x1)', durationMinutes: 360, intervalsCovered: 36, daysOffFactor: 7/6 },
-  { type: '09:00', label: '9h00 (4x3)', durationMinutes: 540, intervalsCovered: 54, daysOffFactor: 7/4 },
-  { type: '12x36', label: '12h00 (12x36)', durationMinutes: 720, intervalsCovered: 72, daysOffFactor: 2 },
-  { type: '04:00', label: 'Part-time 4h (6x1)', durationMinutes: 240, intervalsCovered: 24, daysOffFactor: 7/6 },
-  { type: '05:15', label: 'Jovem Aprendiz (5x2)', durationMinutes: 315, intervalsCovered: 32, daysOffFactor: 7/5 }
+  { type: '05:15', label: 'JA 5h15 (4x3)', durationMinutes: 315, intervalsCovered: 32, daysOffFactor: 7/4 }
 ];
 
 export interface ScheduledShift {
@@ -477,14 +471,11 @@ export function compareShiftCombinations(
   const combinations: ShiftType[][] = [
     ['06:20'],
     ['08:12'],
+    ['05:15'],
     ['06:20', '08:12'],
-    ['06:20', '07:12'],
-    ['07:12', '08:12'],
-    ['06:00', '06:20', '08:12'],
-    ['06:20', '07:12', '08:12'],
-    ['06:20', '08:12', '04:00'],
+    ['06:20', '05:15'],
+    ['08:12', '05:15'],
     ['06:20', '08:12', '05:15'],
-    ['06:20', '08:12', '12x36'],
   ];
 
   return combinations.map(shifts => {
