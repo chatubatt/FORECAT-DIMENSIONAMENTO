@@ -218,7 +218,7 @@ export function findMinAgents(inputs: ErlangInputs): ErlangResult {
   let currentResult = evaluateErlangConfig(agents, traffic, tmo, inputs.targetSlaTime, inputs.shrinkage);
   
   // First satisfy SLA
-  while (currentResult.serviceLevel < inputs.targetSlaPercent * 100 && agents < traffic * 3) {
+  while (currentResult.serviceLevel < inputs.targetSlaPercent && agents < traffic * 3) {
     agents++;
     currentResult = evaluateErlangConfig(agents, traffic, tmo, inputs.targetSlaTime, inputs.shrinkage);
   }

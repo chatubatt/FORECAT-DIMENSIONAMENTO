@@ -238,13 +238,6 @@ export function calculateShifts(
         // Penalidade menor para 'wasted' e bônus pelo tamanho do turno.
         let score = (useful * 2) - (wasted * 0.5) + (shift.intervalsCovered * 0.1);
         
-        // Se este horário de início (s) já foi escolhido para algum turno nesta escala, 
-        // dar um bônus forte para incentivar consolidação de entradas
-        const hasExistingEntryAtThisStart = Array.from(scheduleMap.values()).some(item => item.startIndex === s);
-        if (hasExistingEntryAtThisStart) {
-          score += 15.0;
-        }
-        
         // Secondary Score (Tie-breaker 1): favor covering the highest deficits (centers shift around peak)
         score += (reduction * 0.001);
         
@@ -297,10 +290,6 @@ export function calculateShifts(
           wasted += overflow;
           
           let score = (useful * 2) - (wasted * 0.5) + (shift.intervalsCovered * 0.1) + (reduction * 0.001);
-          const hasExistingEntryAtThisStart = Array.from(scheduleMap.values()).some(item => item.startIndex === s);
-          if (hasExistingEntryAtThisStart) {
-            score += 15.0;
-          }
           
           if (score > bestScore) {
             bestScore = score;
@@ -362,7 +351,10 @@ export function calculateShifts(
           if (coverage[j] > necTarget[j]) benefit++;
           else cost++;
         }
-        const impact = benefit - cost * 1.5; // Penalizar criação de déficit levemente
+        // Não podar se for criar QUALQUER déficit
+        if (cost > 0) continue;
+
+        const impact = benefit; 
         if (impact > bestImpact) { bestImpact = impact; bestKey = key; }
       }
       if (bestKey !== null && bestImpact > 0) {
