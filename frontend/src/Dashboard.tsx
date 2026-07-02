@@ -2125,75 +2125,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       {
     forecastData.length > 0 && (
       <>
-        {/* TABS NAVIGATION */}
-        <div className="flex space-x-2 border-b border-[rgba(99,102,241,0.12)] mb-6">
-          <button
-            onClick={() => setActiveTab('forecast')}
-            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'forecast' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-          >
-            Forecast & Curvas
-          </button>
-          <button
-            onClick={() => setActiveTab('calendario')}
-            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'calendario' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-          >
-            Motor de Calendário
-          </button>
-          <button
-            onClick={() => setActiveTab('historico')}
-            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'historico' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-          >
-            Histórico Anual & Variação
-          </button>
-          <button
-            onClick={() => setActiveTab('baseline')}
-            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'baseline' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-          >
-            Baseline & Fatores
-          </button>
-          <button
-            onClick={() => setActiveTab('previsao_mensal')}
-            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'previsao_mensal' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-          >
-            Previsão Mensal
-          </button>
-          <button
-            onClick={() => setActiveTab('dimensionamento')}
-            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'dimensionamento' ? 'border-orange-500 text-orange-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-          >
-            Dimensionamento (Erlang)
-          </button>
-          <button
-            onClick={() => setActiveTab('metodologia')}
-            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'metodologia' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-          >
-            Metodologia de Forecast
-          </button>
-          <button
-            onClick={() => setActiveTab('cenarios')}
-            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'cenarios' ? 'border-emerald-500 text-emerald-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-          >
-            Cenários Salvos
-          </button>
-          <button
-            onClick={() => setActiveTab('shrinkage')}
-            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'shrinkage' ? 'border-rose-500 text-rose-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-          >
-            Shrinkage
-          </button>
-          <button
-            onClick={() => setActiveTab('whatif')}
-            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'whatif' ? 'border-cyan-500 text-cyan-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-          >
-            What-If
-          </button>
-          <button
-            onClick={() => setActiveTab('rotacao')}
-            className={`px-4 py-2 border-b-2 font-medium transition-colors ${activeTab === 'rotacao' ? 'border-violet-500 text-violet-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-          >
-            Rotação
-          </button>
-        </div>
+        {/* TABS NAVIGATION REMOVIDA A PEDIDO DO USUÁRIO (AGORA SÓ NA LATERAL) */}
 
         {activeTab === 'cenarios' && (
           <>
