@@ -72,7 +72,8 @@ export function calculateShifts(
   enabledShiftTypes: ShiftType[],
   operatingDays: number = 7,
   minStartIdx: number = 0,
-  maxStartIdx: number = Infinity
+  maxStartIdx: number = Infinity,
+  maxPALimit: number = Infinity
 ): ShiftScheduleResult {
   
   // Detectar a largura real dos intervalos a partir dos dados (ex: 10, 30 ou 60 min)
@@ -146,10 +147,20 @@ export function calculateShifts(
         const timeStr = intervalLabels[s];
         if (!isStartAndShiftAllowed(timeStr, shift.type)) continue;
 
+        // Se a adição deste turno exceder o limite de PAs em qualquer intervalo, ignorar candidato
+        let wouldViolateLimit = false;
+        const limit = Math.min(s + shift.intervalsCovered, numIntervals);
+        for (let j = s; j < limit; j++) {
+          if (coverage[j] >= maxPALimit) {
+            wouldViolateLimit = true;
+            break;
+          }
+        }
+        if (wouldViolateLimit) continue;
+
         let useful = 0;
         let wasted = 0;
         let reduction = 0;
-        const limit = Math.min(s + shift.intervalsCovered, numIntervals);
         for (let j = s; j < limit; j++) {
           if (required[j] > 0) {
             useful++;
@@ -201,10 +212,20 @@ export function calculateShifts(
           const timeStr = intervalLabels[s];
           if (!isStartAndShiftAllowed(timeStr, shift.type)) continue;
 
+          // Se a adição deste turno exceder o limite de PAs em qualquer intervalo, ignorar candidato
+          let wouldViolateLimit = false;
+          const limit = Math.min(s + shift.intervalsCovered, numIntervals);
+          for (let j = s; j < limit; j++) {
+            if (coverage[j] >= maxPALimit) {
+              wouldViolateLimit = true;
+              break;
+            }
+          }
+          if (wouldViolateLimit) continue;
+
           let useful = 0;
           let wasted = 0;
           let reduction = 0;
-          const limit = Math.min(s + shift.intervalsCovered, numIntervals);
           for (let j = s; j < limit; j++) {
             if (required[j] > 0) {
               useful++;
@@ -367,7 +388,8 @@ export function allocateShifts612_812(
   nec: number[],
   intervalLabels: string[],
   opStart: string,
-  opEnd: string
+  opEnd: string,
+  maxPALimit: number = Infinity
 ): ShiftAllocationResult {
   // Detectar a largura real dos intervalos a partir dos dados
   let intervalMinutes = 10;
@@ -442,8 +464,18 @@ export function allocateShifts612_812(
 
     for (const cand of candidates) {
       if (cand.start > peakIdx || cand.end <= peakIdx) continue;
-      let reduction = 0;
+
+      // Se a adição deste turno exceder o limite de PAs em qualquer intervalo, ignorar candidato
+      let wouldViolateLimit = false;
       const limit = Math.min(cand.end, n);
+      for (let j = cand.start; j < limit; j++) {
+        if (coverage[j] >= maxPALimit) {
+          wouldViolateLimit = true;
+          break;
+        }
+      }
+      if (wouldViolateLimit) continue;
+      let reduction = 0;
       for (let j = cand.start; j < limit; j++) {
         reduction += Math.min(deficit[j], 1) * deficit[j];
       }
@@ -469,9 +501,17 @@ export function allocateShifts612_812(
       for (const cand of candidates) {
         let reduction = 0;
         const limit = Math.min(cand.end, n);
+
+        // Se a adição deste turno exceder o limite de PAs em qualquer intervalo, ignorar candidato
+        let wouldViolateLimit = false;
         for (let j = cand.start; j < limit; j++) {
-          reduction += Math.min(deficit[j], 1) * deficit[j];
+          if (coverage[j] >= maxPALimit) {
+            wouldViolateLimit = true;
+            break;
+          }
         }
+        if (wouldViolateLimit) continue;
+
         if (reduction === 0) continue;
 
         const validDuration = Math.max(1, limit - cand.start);
@@ -553,7 +593,8 @@ export function compareShiftCombinations(
   overheadPercent: number = 30,
   operatingDays: number = 7,
   minStartIdx: number = 0,
-  maxStartIdx: number = Infinity
+  maxStartIdx: number = Infinity,
+  maxPALimit: number = Infinity
 ): ShiftCombinationCost[] {
   // Test common combinations
   const combinations: ShiftType[][] = [
@@ -567,7 +608,7 @@ export function compareShiftCombinations(
   ];
 
   return combinations.map(shifts => {
-    const result = calculateShifts(requiredAgentsPerInterval, intervalLabels, shifts, operatingDays, minStartIdx, maxStartIdx);
+    const result = calculateShifts(requiredAgentsPerInterval, intervalLabels, shifts, operatingDays, minStartIdx, maxStartIdx, maxPALimit);
     const totalCost = result.totalMonthlyHC * costPerAgentMonth * (1 + overheadPercent / 100);
     return {
       shifts,
