@@ -142,6 +142,13 @@ export function calculateShifts(
         // Penalidade menor para 'wasted' e bônus pelo tamanho do turno.
         let score = (useful * 2) - (wasted * 0.5) + (shift.intervalsCovered * 0.1);
         
+        // Se este horário de início (s) já foi escolhido para algum turno nesta escala, 
+        // dar um bônus forte para incentivar consolidação de entradas
+        const hasExistingEntryAtThisStart = Array.from(scheduleMap.values()).some(item => item.startIndex === s);
+        if (hasExistingEntryAtThisStart) {
+          score += 15.0;
+        }
+        
         // Secondary Score (Tie-breaker 1): favor covering the highest deficits (centers shift around peak)
         score += (reduction * 0.001);
         
@@ -181,6 +188,10 @@ export function calculateShifts(
           wasted += overflow;
           
           let score = (useful * 2) - (wasted * 0.5) + (shift.intervalsCovered * 0.1) + (reduction * 0.001);
+          const hasExistingEntryAtThisStart = Array.from(scheduleMap.values()).some(item => item.startIndex === s);
+          if (hasExistingEntryAtThisStart) {
+            score += 15.0;
+          }
           
           if (score > bestScore) {
             bestScore = score;
@@ -411,6 +422,12 @@ export function allocateShifts612_812(
       const wasted = cand.duration - validDuration;
       score += (validDuration * 0.0001) - (wasted * 0.0001);
 
+      // Bônus para consolidação de entradas em allocateShifts612_812
+      const hasExisting = Array.from(allocationMap.values()).some(item => item.start === cand.start);
+      if (hasExisting) {
+        score += 10.0;
+      }
+
       if (score > bestScore) { bestScore = score; bestCand = cand; }
     }
 
@@ -428,6 +445,11 @@ export function allocateShifts612_812(
         let score = reduction / validDuration;
         const wasted = cand.duration - validDuration;
         score += (validDuration * 0.0001) - (wasted * 0.0001);
+
+        const hasExisting = Array.from(allocationMap.values()).some(item => item.start === cand.start);
+        if (hasExisting) {
+          score += 10.0;
+        }
 
         if (score > bestScore) { bestScore = score; bestCand = cand; }
       }

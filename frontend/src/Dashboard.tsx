@@ -883,9 +883,14 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     let minStart = 0;
     let maxStart = labels.length - 1;
     const [sH, sM] = opStart.split(':').map(Number);
-    // Trava de entradas: nenhuma escala pode começar antes das 06:00 (360 minutos), 
-    // mesmo se o Horário de Operação for configurado para 00:00.
-    const startMins = Math.max(360, (isNaN(sH) ? 0 : sH) * 60 + (isNaN(sM) ? 0 : sM));
+    
+    // Se opStart for '00:00', permitimos iniciar a partir de 00:00.
+    // Caso contrário, respeitamos a trava de 06:00 (360 minutos) como mínimo de entrada padrão
+    // para evitar horários noturnos indesejados se a operação não for de 24h.
+    const is24h = opStart === '00:00' && opEnd === '23:59';
+    const startLimit = is24h ? 0 : 360;
+    const startMins = Math.max(startLimit, (isNaN(sH) ? 0 : sH) * 60 + (isNaN(sM) ? 0 : sM));
+    
     const [eH, eM] = opEnd.split(':').map(Number);
     let endMins = (isNaN(eH) ? 23 : eH) * 60 + (isNaN(eM) ? 59 : eM);
     if (opEnd === '00:00') endMins = 1440; // Especial case for midnight close
@@ -899,6 +904,21 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       if (!isNaN(h) && !isNaN(m) && h * 60 + m <= endMins) { maxStart = i; break; }
     }
     return { minStart, maxStart };
+  };
+
+  // Helper para detectar dinamicamente a duração de cada intervalo em segundos
+  const getIntervalSeconds = (labels: string[]): number => {
+    if (labels.length > 1) {
+      const [h1, m1] = labels[0].split(':').map(Number);
+      const [h2, m2] = labels[1].split(':').map(Number);
+      if (!isNaN(h1) && !isNaN(m1) && !isNaN(h2) && !isNaN(m2)) {
+        const diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (diff > 0 && diff <= 60) {
+          return diff * 60;
+        }
+      }
+    }
+    return 600; // Padrão 10 minutos (600s)
   };
 
   const monthlyShiftSchedules = useMemo(() => {
@@ -955,7 +975,10 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       baseSchedules.sunday = calculateShifts(req, lbl, dimEnabledShifts, opDays, w.minStart, w.maxStart);
     }
 
-    if (dimStrategy === 'monthly_avg' && dmmWeekday && baseSchedules.weekday) {
+    const sampleLabels = dmmWeekdayLabels.length > 0 ? dmmWeekdayLabels : ['00:00'];
+    const intervalSeconds = getIntervalSeconds(sampleLabels);
+
+    if (dimStrategy === 'monthly_avg' && dmmWeekday && baseSchedules.weekday && dimFixedAgents === '') {
       const evaluateMonthSla = (testBaseSchedules: Record<string, any>) => {
         let totalMonthVol = 0;
         let totalMonthVolOk = 0;
@@ -981,7 +1004,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
             const scheduledAgents = baseRes.coverage[idx] || 0;
             const netAgents = Math.floor(scheduledAgents * (1 - (dimShrinkage / 100)));
             const effectiveTmo = dimTma !== '' ? Number(dimTma) : interval.tmo;
-            const traffic = (interval.volume / 600) * effectiveTmo;
+            const traffic = (interval.volume / intervalSeconds) * effectiveTmo;
             const evalRes = evaluateErlangConfig(netAgents, traffic, effectiveTmo, dimTargetSlaTime, dimShrinkage / 100);
 
             totalMonthVol += interval.volume;
@@ -1019,7 +1042,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
           netAgents = Math.floor(netAgents);
 
           const effectiveTmo = dimTma !== '' ? Number(dimTma) : interval.tmo;
-          const traffic = (interval.volume / 600) * effectiveTmo;
+          const traffic = (interval.volume / intervalSeconds) * effectiveTmo;
           const evalRes = evaluateErlangConfig(netAgents, traffic, effectiveTmo, dimTargetSlaTime, 0);
 
           totalVol += interval.volume;
@@ -1108,6 +1131,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       }
       const tmoAvg = Math.round(totalVol > 0 ? (intervals.reduce((sum, i) => sum + i.volume * i.tmo, 0) / totalVol) : 0);
 
+      const intervalSeconds = getIntervalSeconds(intervals.map(i => i.intervalo));
       // Recalculate SLA and Occupancy for this day using the fixed schedule (shiftRes.coverage)
       const newIntervals = intervals.map((interval, idx) => {
         if (interval.volume === 0 || interval.isClosed) return interval;
@@ -1127,7 +1151,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
         netAgents = Math.floor(netAgents);
 
         const effectiveTmo = dimTma !== '' ? Number(dimTma) : interval.tmo;
-        const traffic = (interval.volume / 600) * effectiveTmo; // 600 seconds = 10 min
+        const traffic = (interval.volume / intervalSeconds) * effectiveTmo;
         const evalRes = evaluateErlangConfig(netAgents, traffic, effectiveTmo, dimTargetSlaTime, 0);
         return {
           ...interval,
@@ -3631,7 +3655,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                     <input type="number" min="1" placeholder="1" value={dimQuantidadeTelas} onChange={e => setDimQuantidadeTelas(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-[rgba(6,182,212,0.06)] border border-cyan-600/50 rounded p-2 text-cyan-100 placeholder-cyan-700/50" />
                   </div>
                   <div>
-                    <label className="block text-sm text-amber-400 mb-1" title="Travar quantidade de operadores e ver o que acontece com o Nível de Serviço">Forçar PAs</label>
+                    <label className="block text-sm text-amber-400 mb-1" title="Limitar/Forçar quantidade de operadores (PAs ativos) e ver o impacto no Nível de Serviço">Limitar / Forçar PAs</label>
                     <input type="number" min="0" placeholder="Livre" value={dimFixedAgents} onChange={e => setDimFixedAgents(e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-[rgba(251,191,36,0.06)] border border-amber-600/50 rounded p-2 text-amber-100 placeholder-amber-700/50" />
                   </div>
                 </div>
