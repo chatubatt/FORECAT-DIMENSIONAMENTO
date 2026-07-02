@@ -1213,7 +1213,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     result.sort((a, b) => a.data.localeCompare(b.data));
 
     return result;
-  }, [optimizedMonthErlang, dimEnabledShifts, dimTargetSlaPercent, dimTargetDmmSlaPercent, dimDmmRank, dimStrategy]);
+  }, [optimizedMonthErlang, dimEnabledShifts, dimTargetSlaPercent, dimTargetDmmSlaPercent, dimDmmRank, dimStrategy, dimFixedAgents, dimOpHours, dimTma, dimTargetSlaTime, dimShrinkage, dimShrinkageConfig]);
 
   const consolidatedSchedules = useMemo(() => {
     if (monthlyShiftSchedules.length === 0) return [];
