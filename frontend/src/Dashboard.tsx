@@ -984,6 +984,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
     const sampleLabels = dmmWeekdayLabels.length > 0 ? dmmWeekdayLabels : ['00:00'];
     const intervalSeconds = getIntervalSeconds(sampleLabels);
+    const numTelas = dimQuantidadeTelas !== '' && Number(dimQuantidadeTelas) > 1 ? Number(dimQuantidadeTelas) : 1;
 
     if (dimStrategy === 'monthly_avg' && dmmWeekday && baseSchedules.weekday && dimFixedAgents === '') {
       const evaluateMonthSla = (testBaseSchedules: Record<string, any>) => {
@@ -1011,7 +1012,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
             const scheduledAgents = baseRes.coverage[idx] || 0;
             const netAgents = scheduledAgents * (1 - (dimShrinkage / 100));
             const effectiveTmo = dimTma !== '' ? Number(dimTma) : interval.tmo;
-            const traffic = (interval.volume / intervalSeconds) * effectiveTmo;
+            const traffic = ((interval.volume / numTelas) / intervalSeconds) * effectiveTmo;
             const evalRes = evaluateErlangConfig(netAgents, traffic, effectiveTmo, dimTargetSlaTime, dimShrinkage / 100);
 
             totalMonthVol += interval.volume;
@@ -1048,7 +1049,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
           }
 
           const effectiveTmo = dimTma !== '' ? Number(dimTma) : interval.tmo;
-          const traffic = (interval.volume / intervalSeconds) * effectiveTmo;
+          const traffic = ((interval.volume / numTelas) / intervalSeconds) * effectiveTmo;
           const evalRes = evaluateErlangConfig(netAgents, traffic, effectiveTmo, dimTargetSlaTime, 0);
 
           totalVol += interval.volume;
@@ -1156,7 +1157,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
         }
 
         const effectiveTmo = dimTma !== '' ? Number(dimTma) : interval.tmo;
-        const traffic = (interval.volume / intervalSeconds) * effectiveTmo;
+        const traffic = ((interval.volume / numTelas) / intervalSeconds) * effectiveTmo;
         const evalRes = evaluateErlangConfig(netAgents, traffic, effectiveTmo, dimTargetSlaTime, 0);
         return {
           ...interval,
