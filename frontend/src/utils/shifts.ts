@@ -135,6 +135,9 @@ export function calculateShifts(
     }
   }
   
+  // Snapshot dos targets antes do loop guloso modificar required
+  const necTarget = [...required];
+  
   const scheduleMap = new Map<string, ScheduledShift>(); // key: "type-startIndex"
 
   const maxIterations = numIntervals * 500;
@@ -289,6 +292,51 @@ export function calculateShifts(
     for (let j = bestStartIndex; j < limit; j++) {
       required[j]--;
       coverage[j]++;
+    }
+  }
+
+  // Pós-processamento: remover excesso de cobertura acima do NEC alvo.
+  // O algoritmo guloso pode sobre-alocar ao cobrir intervalos de baixa demanda
+  // com turnos longos que também se sobrepõem ao pico. Este trim remove o excesso
+  // agente por agente, priorizando entradas com maior contribuição para o excesso.
+  {
+    let trimming = true;
+    while (trimming) {
+      trimming = false;
+      // Encontrar o intervalo com maior excesso
+      let maxExcess = 0;
+      let maxExcessIdx = -1;
+      for (let j = 0; j < numIntervals; j++) {
+        const excess = coverage[j] - necTarget[j];
+        if (excess > maxExcess) { maxExcess = excess; maxExcessIdx = j; }
+      }
+      if (maxExcessIdx === -1) break;
+
+      // Encontrar a entrada que melhor reduz o excesso sem criar déficit
+      let bestKey: string | null = null;
+      let bestImpact = -Infinity;
+      for (const [key, entry] of scheduleMap) {
+        if (entry.count <= 0) continue;
+        const end = Math.min(entry.startIndex + entry.shift.intervalsCovered, numIntervals);
+        if (maxExcessIdx < entry.startIndex || maxExcessIdx >= end) continue;
+        // Contar intervalos com excesso (benefício da remoção) e com déficit (custo)
+        let benefit = 0;
+        let cost = 0;
+        for (let j = entry.startIndex; j < end; j++) {
+          if (coverage[j] > necTarget[j]) benefit++;
+          else cost++;
+        }
+        const impact = benefit - cost * 3; // Penalizar criação de déficit
+        if (impact > bestImpact) { bestImpact = impact; bestKey = key; }
+      }
+      if (bestKey !== null && bestImpact > 0) {
+        const entry = scheduleMap.get(bestKey)!;
+        entry.count--;
+        const end = Math.min(entry.startIndex + entry.shift.intervalsCovered, numIntervals);
+        for (let j = entry.startIndex; j < end; j++) coverage[j]--;
+        if (entry.count === 0) scheduleMap.delete(bestKey);
+        trimming = true;
+      }
     }
   }
 
@@ -571,6 +619,45 @@ export function allocateShifts612_812(
     const limit = Math.min(bestCand.end, n);
     for (let j = bestCand.start; j < limit; j++) {
       coverage[j]++;
+    }
+  }
+
+  // Pós-processamento: remover excesso de cobertura acima do NEC alvo em allocateShifts612_812.
+  {
+    let trimming = true;
+    while (trimming) {
+      trimming = false;
+      let maxExcess = 0;
+      let maxExcessIdx = -1;
+      for (let j = 0; j < n; j++) {
+        const excess = coverage[j] - cappedNec[j];
+        if (excess > maxExcess) { maxExcess = excess; maxExcessIdx = j; }
+      }
+      if (maxExcessIdx === -1) break;
+
+      let bestKey: string | null = null;
+      let bestImpact = -Infinity;
+      for (const [key, entry] of allocationMap) {
+        if (entry.count <= 0) continue;
+        const end = Math.min(entry.end, n);
+        if (maxExcessIdx < entry.start || maxExcessIdx >= end) continue;
+        let benefit = 0;
+        let cost = 0;
+        for (let j = entry.start; j < end; j++) {
+          if (coverage[j] > cappedNec[j]) benefit++;
+          else cost++;
+        }
+        const impact = benefit - cost * 3;
+        if (impact > bestImpact) { bestImpact = impact; bestKey = key; }
+      }
+      if (bestKey !== null && bestImpact > 0) {
+        const entry = allocationMap.get(bestKey)!;
+        entry.count--;
+        const end = Math.min(entry.end, n);
+        for (let j = entry.start; j < end; j++) coverage[j]--;
+        if (entry.count === 0) allocationMap.delete(bestKey);
+        trimming = true;
+      }
     }
   }
 
