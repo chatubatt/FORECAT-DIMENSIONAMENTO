@@ -4095,6 +4095,102 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                         </div>
                       </div>
 
+                      {/* ─── Validação de Dimensionamento ─────────────────── */}
+                      {(() => {
+                        const necPeak = erlangData.length > 0
+                          ? Math.max(...erlangData.map(d => d.requiredAgents))
+                          : 0;
+                        const schedulePeak = shiftSchedule?.coverage?.length > 0
+                          ? Math.max(...shiftSchedule.coverage)
+                          : (shiftSchedule?.totalDailyHC || 0);
+                        const schedHC = shiftSchedule?.totalDailyHC || 0;
+
+                        // HC mínimo teórico a partir do NEC médio e janela de operação
+                        const activeNec = erlangData.filter(d => d.requiredAgents > 0);
+                        const avgNec = activeNec.length > 0
+                          ? activeNec.reduce((s, d) => s + d.requiredAgents, 0) / activeNec.length
+                          : 0;
+                        const opHoursRange = activeNec.length * 0.5;
+                        const enabledShiftAvgHours = dimEnabledShifts.length > 0
+                          ? dimEnabledShifts.reduce((s, t) => {
+                              const sh = [{ type: '06:20' as string, h: 6.33 }, { type: '08:12' as string, h: 8.2 }, { type: '05:15' as string, h: 5.25 }].find(x => x.type === (t as string));
+                              return s + (sh?.h || 6.33);
+                            }, 0) / dimEnabledShifts.length
+                          : 6.33;
+                        const theoreticalMinHC = Math.ceil((avgNec * opHoursRange) / enabledShiftAvgHours);
+                        const daysOffFactor = dimEnabledShifts.includes('06:20') ? 7/6
+                          : dimEnabledShifts.includes('08:12') ? 7/5
+                          : 7/6;
+                        const theoreticalMinHCWithRest = Math.ceil(theoreticalMinHC * daysOffFactor);
+
+                        const overstaffRatio = necPeak > 0 ? schedulePeak / necPeak : 1;
+                        const overstaff = Math.max(0, schedulePeak - necPeak);
+
+                        const dmmRow = monthlyShiftSchedules.length > 0
+                          ? [...monthlyShiftSchedules].sort((a, b) => (b.totalTraffic || 0) - (a.totalTraffic || 0))[0]
+                          : null;
+                        const dmmSla = dmmRow ? ((dmmRow.finalSla || 0) * 100) : null;
+                        const dmmSlaOk = dmmSla !== null ? dmmSla >= dimTargetDmmSlaPercent : null;
+                        const monthlySlaOk = dimSummary ? ((dimSummary.finalSla || 0) * 100) >= dimTargetSlaPercent : null;
+
+                        const statusColor = overstaffRatio > 1.5
+                          ? 'border-rose-500/60 bg-rose-900/15'
+                          : overstaffRatio > 1.15
+                          ? 'border-amber-500/60 bg-amber-900/15'
+                          : 'border-emerald-500/60 bg-emerald-900/15';
+                        const statusIcon = overstaffRatio > 1.5 ? '🔴' : overstaffRatio > 1.15 ? '🟡' : '🟢';
+                        const statusMsg = overstaffRatio > 1.5
+                          ? `Escala sobre-dimensionada: pico cobre ${schedulePeak} PAs mas NEC exige apenas ${necPeak}`
+                          : overstaffRatio > 1.15
+                          ? `Leve excesso de cobertura: ${overstaff} PA(s) acima do NEC no pico`
+                          : `Cobertura alinhada com a demanda`;
+
+                        return (
+                          <div className={`rounded-xl border p-4 mb-6 ${statusColor}`}>
+                            <div className="flex items-center gap-2 mb-3">
+                              <span className="text-lg">{statusIcon}</span>
+                              <h4 className="text-base font-bold text-white">Validação de Dimensionamento</h4>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                              <div className="bg-black/30 rounded-lg p-3 text-center">
+                                <p className="text-xs text-slate-400 mb-1">NEC Pico (Erlang)</p>
+                                <p className="text-2xl font-bold text-blue-400">{necPeak}</p>
+                                <p className="text-xs text-slate-500">PAs necessárias</p>
+                              </div>
+                              <div className="bg-black/30 rounded-lg p-3 text-center">
+                                <p className="text-xs text-slate-400 mb-1">Cobertura Pico (Escala)</p>
+                                <p className={`text-2xl font-bold ${overstaffRatio > 1.3 ? 'text-rose-400' : overstaffRatio > 1.1 ? 'text-amber-400' : 'text-emerald-400'}`}>{schedulePeak}</p>
+                                <p className="text-xs text-slate-500">{overstaffRatio > 1 ? `+${overstaff} acima NEC` : 'dentro do NEC'}</p>
+                              </div>
+                              <div className="bg-black/30 rounded-lg p-3 text-center">
+                                <p className="text-xs text-slate-400 mb-1">HC Simulado / Estimativa Mín.</p>
+                                <p className="text-2xl font-bold text-white">{schedHC} <span className="text-slate-500 text-base">/ {theoreticalMinHCWithRest}</span></p>
+                                <p className="text-xs text-slate-500">simulado / teórico (c/ folga)</p>
+                              </div>
+                              <div className="bg-black/30 rounded-lg p-3 text-center">
+                                <p className="text-xs text-slate-400 mb-1">NS DMM / Meta DMM</p>
+                                <p className={`text-2xl font-bold ${dmmSlaOk === null ? 'text-slate-400' : dmmSlaOk ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                  {dmmSla !== null ? `${dmmSla.toFixed(0)}%` : '—'}
+                                  <span className="text-slate-500 text-base"> / {dimTargetDmmSlaPercent}%</span>
+                                </p>
+                                <p className="text-xs text-slate-500">{dmmSlaOk === null ? 'aguardando cálculo' : dmmSlaOk ? '✅ DMM OK' : '❌ Abaixo da meta'}</p>
+                              </div>
+                            </div>
+                            <div className="text-xs text-slate-300 bg-black/20 rounded-lg px-3 py-2 flex flex-wrap gap-4">
+                              <span>{statusMsg}</span>
+                              {monthlySlaOk !== null && (
+                                <span className={monthlySlaOk ? 'text-emerald-400' : 'text-rose-400'}>
+                                  {monthlySlaOk ? '✅' : '❌'} SLA Mensal {dimSummary ? `${((dimSummary.finalSla || 0) * 100).toFixed(1)}%` : ''} (meta: {dimTargetSlaPercent}%)
+                                </span>
+                              )}
+                              <span className="text-slate-400">
+                                Estimativa mínima teórica (NEC médio × horas op. ÷ duração turno × folga): ~{theoreticalMinHCWithRest} pessoas/dia
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       <div className="overflow-x-auto ">
                         <table className="data-table">
                           <thead className="">
