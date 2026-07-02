@@ -120,7 +120,9 @@ export function calculateShifts(
         wasted += overflow;
         
         // Primary Score: useful coverage minus wasted coverage
-        let score = useful - (wasted * 1.5);
+        // Modificado: favorecer turnos maiores se eles cobrirem mais demanda. 
+        // Penalidade menor para 'wasted' e bônus pelo tamanho do turno.
+        let score = (useful * 2) - (wasted * 0.5) + (shift.intervalsCovered * 0.1);
         
         // Secondary Score (Tie-breaker 1): favor covering the highest deficits (centers shift around peak)
         score += (reduction * 0.001);
@@ -160,7 +162,7 @@ export function calculateShifts(
           const overflow = shift.intervalsCovered - (limit - s);
           wasted += overflow;
           
-          let score = (useful * 2) - (wasted * 1.5) + (reduction * 0.001);
+          let score = (useful * 2) - (wasted * 0.5) + (shift.intervalsCovered * 0.1) + (reduction * 0.001);
           
           if (score > bestScore) {
             bestScore = score;
