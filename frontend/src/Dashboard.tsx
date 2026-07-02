@@ -601,6 +601,17 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     }
   }, [selectedCelula]);
 
+  // Carrega forecast mensal ao navegar para abas que precisam dele
+  useEffect(() => {
+    if (
+      availableCelulas.length > 0 &&
+      monthForecastData.length === 0 &&
+      (activeTab === 'previsao_mensal' || activeTab === 'dimensionamento')
+    ) {
+      loadMonthForecast();
+    }
+  }, [activeTab]);
+
   const loadMonthForecast = async () => {
     setLoading(true);
     try {
