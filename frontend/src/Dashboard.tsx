@@ -1583,6 +1583,64 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     return chunked;
   }, [erlangData, shiftSchedule, chunkSize, dimDmmRank, monthlyShiftSchedules]);
 
+  const { satCoverageChartData, sunCoverageChartData } = useMemo(() => {
+    let satChart: any[] = [];
+    let sunChart: any[] = [];
+    if (monthlyShiftSchedules.length > 0) {
+      const saturdays = monthlyShiftSchedules.filter(r => new Date(r.data + "T00:00:00").getDay() === 6).sort((a,b) => b.totalVol - a.totalVol);
+      const sundays = monthlyShiftSchedules.filter(r => new Date(r.data + "T00:00:00").getDay() === 0).sort((a,b) => b.totalVol - a.totalVol);
+      const dmmSatData = saturdays[Math.min(dimDmmRank - 1, Math.max(0, saturdays.length - 1))];
+      const dmmSunData = sundays[Math.min(dimDmmRank - 1, Math.max(0, sundays.length - 1))];
+
+      const buildChart = (dayData: any) => {
+        if (!dayData || !dayData.intervals) return [];
+        const chunked = [];
+        const { intervals, shiftRes } = dayData;
+        for (let i = 0; i < intervals.length; i += chunkSize) {
+          const chunk = intervals.slice(i, i + chunkSize);
+          if (chunk.length === 0) continue;
+          
+          const openIntervals = chunk.filter((r: any) => !r.isClosed);
+          if (openIntervals.length === 0) continue;
+          
+          const sumVol = openIntervals.reduce((sum: number, r: any) => sum + r.volume, 0);
+          const maxReqAgents = Math.max(...openIntervals.map((r: any) => r.requiredAgents));
+          let maxCoverage = 0;
+          let peakIdx = 0;
+          if (shiftRes && shiftRes.coverage) {
+            for (let idx = 0; idx < chunk.length; idx++) {
+              const cov = shiftRes.coverage[i + idx] || 0;
+              if (cov >= maxCoverage) {
+                maxCoverage = cov;
+                peakIdx = idx;
+              }
+            }
+          }
+          
+          const activeSum: Record<string, number> = {};
+          if (shiftRes && shiftRes.activePerInterval) {
+            AVAILABLE_SHIFTS.forEach(s => {
+              activeSum[s.type] = shiftRes.activePerInterval[i + peakIdx]?.[s.type] || 0;
+            });
+          }
+          
+          chunked.push({
+            intervalo: chunk[0].intervalo,
+            required: maxReqAgents,
+            coverage: maxCoverage,
+            volume: sumVol,
+            ...activeSum
+          });
+        }
+        return chunked;
+      };
+
+      satChart = buildChart(dmmSatData);
+      sunChart = buildChart(dmmSunData);
+    }
+    return { satCoverageChartData: satChart, sunCoverageChartData: sunChart };
+  }, [monthlyShiftSchedules, chunkSize, dimDmmRank]);
+
   const erlangChartData = useMemo(() => {
     if (erlangData.length === 0) return [];
 
@@ -4283,6 +4341,62 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                           </ComposedChart>
                         </ResponsiveContainer>
                       </div>
+                    </div>
+                  )}
+
+                  {(satCoverageChartData.length > 0 || sunCoverageChartData.length > 0) && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6 mb-6">
+                      {satCoverageChartData.length > 0 && (
+                        <div className="glass p-6">
+                          <h3 className="text-lg font-semibold mb-6 text-purple-400">Cobertura Sábado (DMM) vs PAs Nec.</h3>
+                          <div className="h-80">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <ComposedChart data={satCoverageChartData}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                                <XAxis dataKey="intervalo" stroke="#94a3b8" fontSize={12} tickMargin={10} />
+                                <YAxis yAxisId="left" stroke="#3b82f6" fontSize={12} orientation="left" />
+                                <RechartsTooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '0.5rem' }} />
+                                <Legend />
+                                {AVAILABLE_SHIFTS.map((shift: any, idx: number) => {
+                                  if (!dimEnabledShifts.includes(shift.type)) return null;
+                                  const colors = ['#fde047', '#3b82f6', '#10b981', '#a855f7', '#ec4899', '#f97316', '#14b8a6', '#6366f1', '#eab308'];
+                                  const color = colors[idx % colors.length];
+                                  return (
+                                    <Bar key={shift.type} yAxisId="left" dataKey={shift.type} name={`HC ${shift.label.split(' ')[0]}`} stackId="1" fill={color} opacity={0.9} radius={0} />
+                                  );
+                                })}
+                                <Line yAxisId="left" type="stepAfter" dataKey="required" name="NEC Sábado" stroke="#8b5cf6" strokeWidth={3} dot={false} />
+                              </ComposedChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      )}
+
+                      {sunCoverageChartData.length > 0 && (
+                        <div className="glass p-6">
+                          <h3 className="text-lg font-semibold mb-6 text-purple-400">Cobertura Domingo (DMM) vs PAs Nec.</h3>
+                          <div className="h-80">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <ComposedChart data={sunCoverageChartData}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                                <XAxis dataKey="intervalo" stroke="#94a3b8" fontSize={12} tickMargin={10} />
+                                <YAxis yAxisId="left" stroke="#3b82f6" fontSize={12} orientation="left" />
+                                <RechartsTooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '0.5rem' }} />
+                                <Legend />
+                                {AVAILABLE_SHIFTS.map((shift: any, idx: number) => {
+                                  if (!dimEnabledShifts.includes(shift.type)) return null;
+                                  const colors = ['#fde047', '#3b82f6', '#10b981', '#a855f7', '#ec4899', '#f97316', '#14b8a6', '#6366f1', '#eab308'];
+                                  const color = colors[idx % colors.length];
+                                  return (
+                                    <Bar key={shift.type} yAxisId="left" dataKey={shift.type} name={`HC ${shift.label.split(' ')[0]}`} stackId="1" fill={color} opacity={0.9} radius={0} />
+                                  );
+                                })}
+                                <Line yAxisId="left" type="stepAfter" dataKey="required" name="NEC Domingo" stroke="#f43f5e" strokeWidth={3} dot={false} />
+                              </ComposedChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
