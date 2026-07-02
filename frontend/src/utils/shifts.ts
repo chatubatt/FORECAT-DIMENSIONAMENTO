@@ -149,9 +149,32 @@ export function calculateShifts(
 
   // Aplicar as entradas forçadas (ex: mínimos no fim de semana)
   for (const forced of forceEntries) {
-    const s = intervalLabels.findIndex(l => l === forced.time);
-    if (s === -1) continue;
+    let s = intervalLabels.findIndex(l => l === forced.time);
     
+    // Fallback para encontrar o intervalo mais próximo caso o horário exato não exista (ex: 17:40 em dados de 30min)
+    if (s === -1) {
+      const forcedParts = forced.time.split(':').map(Number);
+      if (forcedParts.length === 2 && !isNaN(forcedParts[0])) {
+        const forcedMins = forcedParts[0] * 60 + forcedParts[1];
+        let closestIdx = -1;
+        let minDiff = Infinity;
+        intervalLabels.forEach((lbl, idx) => {
+          const parts = lbl.split(':').map(Number);
+          if (parts.length === 2 && !isNaN(parts[0])) {
+            const lblMins = parts[0] * 60 + parts[1];
+            const diff = Math.abs(lblMins - forcedMins);
+            if (diff < minDiff) {
+              minDiff = diff;
+              closestIdx = idx;
+            }
+          }
+        });
+        s = closestIdx;
+      }
+    }
+
+    if (s === -1) continue;
+
     // Encontrar o melhor turno permitido para esse horário
     const shiftTypeStr = enabledShifts.find(sh => isStartAndShiftAllowed(forced.time, sh.type))?.type || enabledShifts[0]?.type;
     if (!shiftTypeStr) continue;
