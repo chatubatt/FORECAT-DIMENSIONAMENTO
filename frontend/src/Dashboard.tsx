@@ -1,7 +1,8 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, BarChart, Bar, ComposedChart, Area } from 'recharts';
 import { UploadCloud, Activity, Clock, CalendarDays, TrendingUp, Users } from 'lucide-react';
-import { evaluateErlangConfig, type SlaStrategy, type OperatingHoursConfig, type ErlangResult, calculateCostEstimate, calculateSLASensitivity, type SensitivityResult, calculateShrinkageBreakdown, calculateScenarioImpact, type ScenarioResult, exportToCSV } from './utils/erlang';
+import { evaluateErlangConfig, calculateStaffingStrategy, type OptimizedInterval, type SlaStrategy, type OperatingHoursConfig, type ErlangResult, calculateCostEstimate, calculateSLASensitivity, type SensitivityResult, calculateShrinkageBreakdown, calculateScenarioImpact, type ScenarioResult, exportToCSV } from './utils/erlang';
+
 import { calculateShifts, type ShiftType, AVAILABLE_SHIFTS, allocateShifts612_812, type ShiftAllocationResult, compareShiftCombinations, type ShiftCombinationCost, generateRotationCalendar, type RotationCalendar } from './utils/shifts';
 
 interface IntervalForecast {
@@ -69,14 +70,8 @@ interface BaselineMesStat {
 }
 
 
-interface OptimizedMonthErlangItem extends ErlangResult {
-  data: string;
-  intervalo: string;
-  volume: number;
-  tmo: number;
-  coverage: string;
-  isClosed?: boolean;
-}
+
+
 
 interface ModeloTestado {
   modelo: string;
@@ -766,15 +761,14 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
   const debouncedErlangInputs = useDebounce(erlangInputs, 300);
 
-  const [optimizedMonthErlang, setOptimizedMonthErlang] = useState<OptimizedMonthErlangItem[]>([]);
+  const [optimizedMonthErlang, setOptimizedMonthErlang] = useState<OptimizedInterval[]>([]);
+
   const [isCalculatingErlang, setIsCalculatingErlang] = useState<boolean>(false);
-  const erlangWorkerRef = useRef<Worker | null>(null);
+  // Referência para o timer de cálculo (cancelável quando inputs mudam)
+  const erlangTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 
-
-
-  // Cria um Worker novo a cada cálculo e termina o anterior para evitar
-  // "message channel closed before a response was received"
+  // Calcula Erlang diretamente (sem Worker) para eliminar problemas de ciclo de vida
   useEffect(() => {
     const { activeTab, monthForecastData, dimTargetSlaPercent, dimTargetSlaTime,
             dimShrinkage, dimFixedAgents, dimTma, dimStrategy, dimOpHours,
@@ -785,13 +779,12 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       return;
     }
 
-    // Terminar worker anterior se ainda estiver rodando
-    if (erlangWorkerRef.current) {
-      erlangWorkerRef.current.terminate();
-      erlangWorkerRef.current = null;
-    }
-
     setIsCalculatingErlang(true);
+
+    // Cancelar timer anterior se houver (debounce extra)
+    if (erlangTimerRef.current) {
+      clearTimeout(erlangTimerRef.current);
+    }
 
     let forecastToUse = monthForecastData;
     if (dimCurveType !== 'padrao' && stats?.curvas_distribuicao?.[dimCurveType]) {
@@ -824,23 +817,18 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
     if (dimFixedVolume !== '') {
       const fixedVolMonth = Number(dimFixedVolume);
-
-      // Calculate total forecast for the month
       const totalForecastMonth = forecastToUse.reduce((sum, day) =>
         sum + day.intervalos.reduce((s, i) => s + i.volume, 0), 0);
 
       if (totalForecastMonth > 0) {
         const scaleFactor = fixedVolMonth / totalForecastMonth;
-
-        forecastToUse = forecastToUse.map(day => {
-          return {
-            ...day,
-            intervalos: day.intervalos.map((interval: any) => ({
-              ...interval,
-              volume: Math.round(interval.volume * scaleFactor)
-            }))
-          };
-        });
+        forecastToUse = forecastToUse.map(day => ({
+          ...day,
+          intervalos: day.intervalos.map((interval: any) => ({
+            ...interval,
+            volume: Math.round(interval.volume * scaleFactor)
+          }))
+        }));
       }
     }
 
@@ -857,34 +845,22 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       numTelas: dimQuantidadeTelas !== '' && Number(dimQuantidadeTelas) > 1 ? Number(dimQuantidadeTelas) : undefined
     };
 
-    // Criar Worker novo para este cálculo
-    const worker = new Worker(new URL('./workers/erlangWorker.ts', import.meta.url), { type: 'module' });
-    erlangWorkerRef.current = worker;
-
-    worker.onmessage = (event) => {
-      // Ignorar respostas de workers que já foram substituídos
-      if (erlangWorkerRef.current !== worker) return;
-      if (event.data.success) {
-        setOptimizedMonthErlang(event.data.result);
-      } else {
-        console.error('Worker error:', event.data.error);
+    // Usar setTimeout para não bloquear o render atual, mas sem Worker
+    erlangTimerRef.current = setTimeout(() => {
+      try {
+        const result = calculateStaffingStrategy(forecastToUse, inputs, dimStrategy, dimOpHours);
+        setOptimizedMonthErlang(result);
+      } catch (e) {
+        console.error('Erro no cálculo Erlang:', e);
+      } finally {
+        setIsCalculatingErlang(false);
       }
-      setIsCalculatingErlang(false);
-    };
-
-    worker.onerror = (err) => {
-      if (erlangWorkerRef.current !== worker) return;
-      console.error('Worker onerror:', err);
-      setIsCalculatingErlang(false);
-    };
-
-    worker.postMessage({ forecastToUse, inputs, dimStrategy, dimOpHours });
+    }, 50);
 
     return () => {
-      // Cleanup: terminar worker se o efeito for re-executado antes da resposta
-      worker.terminate();
-      if (erlangWorkerRef.current === worker) {
-        erlangWorkerRef.current = null;
+      if (erlangTimerRef.current) {
+        clearTimeout(erlangTimerRef.current);
+        erlangTimerRef.current = null;
       }
     };
   }, [debouncedErlangInputs]);
