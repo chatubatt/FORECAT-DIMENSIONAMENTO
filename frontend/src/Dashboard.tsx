@@ -1079,7 +1079,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
           const firstDmmSla = evaluateDaySla(testSchedules, absoluteFirstDmm);
           const monthSla = evaluateMonthSla(testSchedules);
 
-          if (firstDmmSla >= dimTargetDmmSlaPercent && monthSla >= dimTargetSlaPercent) {
+          if (firstDmmSla >= dimTargetDmmSlaPercent) {
             bestSchedules = testSchedules;
             high = mid; // SLAs are met, try to reduce HC more (lower K)
           } else {
@@ -4178,7 +4178,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                               <span>{statusMsg}</span>
                               {monthlySlaOk !== null && (
                                 <span className={monthlySlaOk ? 'text-emerald-400' : 'text-rose-400'}>
-                                  {monthlySlaOk ? '✅' : '❌'} SLA Mensal {dimSummary ? `${((dimSummary.finalSla || 0) * 100).toFixed(1)}%` : ''} (meta: {dimTargetSlaPercent}%)
+                                  {monthlySlaOk ? '✅' : '❌'} SLA Mensal {dimSummary ? `${(dimSummary.finalSla || 0).toFixed(1)}%` : ''} (meta: {dimTargetSlaPercent}%)
                                 </span>
                               )}
                               <span className="text-slate-400">
