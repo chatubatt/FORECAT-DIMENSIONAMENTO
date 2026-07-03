@@ -4025,46 +4025,40 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                 </div>
               )}
 
-              <div className="glass p-6">
-                <div className="section-header mb-4">
-                  <div className="section-icon text-emerald-400 bg-emerald-500/10"><span>⚙️</span></div>
-                  <h3 className="text-base text-emerald-400">Configuração Avançada WFM (Escalas e Turnos)</h3>
-                </div>
-
-                <div className="mb-6 border-b border-[rgba(99,102,241,0.08)] pb-6">
-                  <div className="flex justify-between items-center mb-3">
-                    <label className="block text-sm text-slate-300 font-semibold">Turnos Disponíveis para Simulação de Escala</label>
-                    <button onClick={runOptimization} className="bg-amber-600 hover:bg-amber-500 text-white px-3 py-1.5 rounded shadow text-sm font-semibold transition flex items-center gap-2">
-                      ✨ Auto-Otimizar Mix
+              <div className="flex gap-6 items-start">
+                <div className="w-56 flex-shrink-0 space-y-4 sticky top-4">
+                  <div className="bg-slate-800/60 rounded-xl p-4 border border-[rgba(99,102,241,0.1)]">
+                    <label className="block text-xs text-slate-400 font-semibold mb-3 uppercase tracking-wide">Turnos</label>
+                    <div className="space-y-2">
+                      {AVAILABLE_SHIFTS.map(shift => (
+                        <label key={shift.type} className={`flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border transition-colors ${dimEnabledShifts.includes(shift.type) ? 'bg-emerald-900/30 border-emerald-500/50 text-emerald-200' : 'bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-slate-400 hover:bg-[var(--color-bg-hover)]'}`}>
+                          <input
+                            type="checkbox"
+                            className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-emerald-500 focus:ring-emerald-500"
+                            checked={dimEnabledShifts.includes(shift.type)}
+                            onChange={(e) => {
+                              if (e.target.checked) setDimEnabledShifts([...dimEnabledShifts, shift.type]);
+                              else setDimEnabledShifts(dimEnabledShifts.filter(t => t !== shift.type));
+                            }}
+                          />
+                          <span className="font-semibold text-sm">{shift.label.split(' ')[0]}</span>
+                          <span className="text-[10px] opacity-60 ml-auto">{(shift.durationMinutes / 60).toFixed(1)}h</span>
+                        </label>
+                      ))}
+                    </div>
+                    <button onClick={runOptimization} className="mt-3 w-full bg-amber-600 hover:bg-amber-500 text-white px-3 py-1.5 rounded shadow text-xs font-semibold transition flex items-center justify-center gap-1">
+                      ✨ Auto-Otimizar
                     </button>
                   </div>
-                  <div className="flex flex-wrap gap-4">
-                    {AVAILABLE_SHIFTS.map(shift => (
-                      <label key={shift.type} className={`flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg border ${dimEnabledShifts.includes(shift.type) ? 'bg-emerald-900/30 border-emerald-500/50 text-emerald-200' : 'bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-slate-400 hover:bg-[var(--color-bg-hover)]'}`}>
-                        <input
-                          type="checkbox"
-                          className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-emerald-500 focus:ring-emerald-500"
-                          checked={dimEnabledShifts.includes(shift.type)}
-                          onChange={(e) => {
-                            if (e.target.checked) setDimEnabledShifts([...dimEnabledShifts, shift.type]);
-                            else setDimEnabledShifts(dimEnabledShifts.filter(t => t !== shift.type));
-                          }}
-                        />
-                        <span className="font-semibold">{shift.label}</span>
-                        {shift.recommended && (
-                          <span className="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded ml-1 font-bold whitespace-nowrap">
-                            ⭐ MELHOR OPÇÃO
-                          </span>
-                        )}
-                        <span className="text-xs opacity-60 ml-2 whitespace-nowrap">
-                          ({(shift.durationMinutes / 60).toFixed(1)}h líquidas)
-                        </span>
-                      </label>
-                    ))}
-                  </div>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="flex-1 min-w-0">
+                  {dimEnabledShifts.length > 0 ? (<>
+                <div className="glass p-6">
+                  <div className="section-header mb-4">
+                    <div className="section-icon text-emerald-400 bg-emerald-500/10"><span>⚙️</span></div>
+                    <h3 className="text-base text-emerald-400">Configuração Avançada WFM (Escalas e Turnos)</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   <div className="flex flex-col gap-4">
                     <div>
                       <label className="label-text" title="Flexibiliza a exigência de SLA em alguns picos se a média agregada do período bater a meta">Estratégia de SLA (Otimização)</label>
@@ -4822,6 +4816,15 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                   </div>
                 </>
               )}
+            </>) : (
+              <div className="bg-slate-800/50 rounded-xl p-16 text-center border border-dashed border-slate-700 mt-4">
+                <p className="text-2xl text-slate-600 mb-3">📋</p>
+                <p className="text-slate-500 text-base mb-1">Nenhum turno selecionado</p>
+                <p className="text-slate-600 text-sm">Selecione ao menos um turno no painel ao lado.</p>
+              </div>
+            )}
+                </div>
+              </div>
             </>
             )}
 
