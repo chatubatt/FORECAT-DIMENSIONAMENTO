@@ -3631,22 +3631,18 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
         {activeTab === 'dimensionamento' && (
           <div key="dimensionamento" className="space-y-6 mt-8 page-enter">
-            <div className="flex justify-between items-end border-b border-[rgba(99,102,241,0.12)] pb-2">
-              <h2 className="text-2xl font-bold flex items-center gap-2 text-orange-400">
-                <Users size={28} /> Dimensionamento Erlang C
-                {isCalculatingErlang && (
-                  <span className="ml-4 flex items-center gap-2 text-sm text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full animate-pulse border border-amber-500/20">
-                    <Activity size={16} className="animate-spin" /> Processando matemática pesada...
-                  </span>
-                )}
-              </h2>
-
+            <div className="section-header">
+              <div className="section-icon"><Users size={18} /></div>
+              <div className="flex-1">
+                <h2 className="text-xl text-[var(--color-text-primary)]">Dimensionamento Erlang C</h2>
+                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Planejamento de capacidade e otimização de escalas</p>
+              </div>
               <div className="flex items-center gap-2">
-                <label className="text-sm text-slate-400">Dia Projetado:</label>
+                <span className="text-xs text-[var(--color-text-muted)]">Dia Projetado:</span>
                 <select
                   value={dimSelectedDay || (monthComparisons?.dmm_data || (monthForecastData[0] ? monthForecastData[0].data : ''))}
                   onChange={(e) => setDimSelectedDay(e.target.value)}
-                  className="bg-slate-800 border border-[rgba(99,102,241,0.12)] text-slate-200 rounded px-3 py-1 outline-none focus:border-blue-500"
+                  className="input-field text-xs w-auto min-w-[130px]"
                 >
                   {monthForecastData.map(d => (
                     <option key={d.data} value={d.data}>
@@ -3655,6 +3651,11 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                     </option>
                   ))}
                 </select>
+                {isCalculatingErlang && (
+                  <span className="ml-2 flex items-center gap-1.5 text-xs text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full animate-pulse border border-amber-500/20">
+                    <Activity size={12} className="animate-spin" /> Calculando...
+                  </span>
+                )}
               </div>
             </div>
 
@@ -3675,33 +3676,33 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
             </div>
 
             {/* WFM KPI Summary */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {wfmMetrics && (
                 <>
-                  <div className="bg-slate-800/80 rounded-lg p-3 border border-[rgba(99,102,241,0.08)]">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Vol. Médio/Dia</p>
-                    <p className="text-lg font-bold text-blue-400">{wfmMetrics.avg_daily_volume?.toLocaleString()}</p>
+                  <div className="kpi-card">
+                    <p className="kpi-label">Vol. Médio/Dia</p>
+                    <p className="kpi-value text-blue-400">{wfmMetrics.avg_daily_volume?.toLocaleString()}</p>
                   </div>
-                  <div className="bg-slate-800/80 rounded-lg p-3 border border-[rgba(99,102,241,0.08)]">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">TMO Médio</p>
-                    <p className="text-lg font-bold text-purple-400">{wfmMetrics.avg_tmo?.toFixed(0)}s</p>
+                  <div className="kpi-card">
+                    <p className="kpi-label">TMO Médio</p>
+                    <p className="kpi-value text-purple-400">{wfmMetrics.avg_tmo?.toFixed(0)}<span className="text-base text-[var(--color-text-muted)]">s</span></p>
                   </div>
-                  <div className="bg-slate-800/80 rounded-lg p-3 border border-[rgba(99,102,241,0.08)]">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Hora Pico</p>
-                    <p className="text-lg font-bold text-orange-400">{wfmMetrics.peak_hour || '-'}</p>
+                  <div className="kpi-card">
+                    <p className="kpi-label">Hora Pico</p>
+                    <p className="kpi-value text-orange-400">{wfmMetrics.peak_hour || '-'}</p>
                   </div>
-                  <div className="bg-slate-800/80 rounded-lg p-3 border border-[rgba(99,102,241,0.08)]">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Índice Volatilidade</p>
-                    <p className="text-lg font-bold text-yellow-400">{wfmMetrics.volatility_index?.toFixed(2) || '-'}</p>
+                  <div className="kpi-card">
+                    <p className="kpi-label">Índice Volatilidade</p>
+                    <p className="kpi-value text-amber-400">{wfmMetrics.volatility_index?.toFixed(2) || '-'}</p>
                   </div>
-                  <div className="bg-slate-800/80 rounded-lg p-3 border border-[rgba(99,102,241,0.08)]">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Ratio Semana/FDS</p>
-                    <p className="text-lg font-bold text-emerald-400">{wfmMetrics.weekday_weekend_ratio?.toFixed(1) || '-'}</p>
+                  <div className="kpi-card">
+                    <p className="kpi-label">Ratio Semana/FDS</p>
+                    <p className="kpi-value text-emerald-400">{wfmMetrics.weekday_weekend_ratio?.toFixed(1) || '-'}</p>
                   </div>
-                  <div className="bg-slate-800/80 rounded-lg p-3 border border-[rgba(99,102,241,0.08)]">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Produtividade</p>
-                    <p className="text-lg font-bold text-cyan-400">
-                      {wfmCostEstimate ? wfmCostEstimate.productivity + ' cham/h' : '-'}
+                  <div className="kpi-card">
+                    <p className="kpi-label">Produtividade</p>
+                    <p className="kpi-value text-cyan-400">
+                      {wfmCostEstimate ? wfmCostEstimate.productivity + '' : '-'} <span className="text-sm text-[var(--color-text-muted)]">cham/h</span>
                     </p>
                   </div>
                 </>
@@ -3832,9 +3833,10 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
               {/* Cost Estimation Configuration */}
               <div className="glass p-5 mb-4">
-                <h3 className="text-base font-semibold mb-4 text-emerald-400 flex items-center gap-2">
-                  <span>💰</span> Custo Operacional
-                </h3>
+                <div className="section-header mb-4">
+                  <div className="section-icon text-emerald-400 bg-emerald-500/10"><span>💰</span></div>
+                  <h3 className="text-base text-emerald-400">Custo Operacional</h3>
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <label className="label-text">Custo/Agente/Mês (R$)</label>
@@ -3882,10 +3884,11 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
               </div>
 
               {showSensitivity && slaSensitivityData.length > 0 && (
-                <div className="bg-slate-800 rounded-xl p-5 shadow-xl border border-amber-700/50 mb-4">
-                  <h3 className="text-base font-semibold mb-4 text-amber-400 flex items-center gap-2">
-                    <span>📊</span> Análise de Sensibilidade SLA
-                  </h3>
+                <div className="glass p-5 mb-4">
+                  <div className="section-header mb-4">
+                    <div className="section-icon text-amber-400 bg-amber-500/10"><span>📊</span></div>
+                    <h3 className="text-base text-amber-400">Análise de Sensibilidade SLA</h3>
+                  </div>
                   <p className="text-xs text-slate-400 mb-3">Impacto da variação de volume no dimensionamento e SLA</p>
                   <div className="overflow-x-auto">
                     <table className="data-table">
@@ -3928,9 +3931,10 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
               {shiftComparisonData.length > 0 && (
                 <div className="glass p-5 mb-4">
-                  <h3 className="text-base font-semibold mb-4 text-cyan-400 flex items-center gap-2">
-                    <span>⚖️</span> Comparativo de Combinações de Turnos
-                  </h3>
+                  <div className="section-header mb-4">
+                    <div className="section-icon text-cyan-400 bg-cyan-500/10"><span>⚖️</span></div>
+                    <h3 className="text-base text-cyan-400">Comparativo de Combinações de Turnos</h3>
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="data-table">
                       <thead>
@@ -3974,7 +3978,10 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
               )}
 
               <div className="glass p-6">
-                <h3 className="text-lg font-semibold mb-4 text-emerald-400">Configuração Avançada WFM (Escalas e Turnos)</h3>
+                <div className="section-header mb-4">
+                  <div className="section-icon text-emerald-400 bg-emerald-500/10"><span>⚙️</span></div>
+                  <h3 className="text-base text-emerald-400">Configuração Avançada WFM (Escalas e Turnos)</h3>
+                </div>
 
                 <div className="mb-6 border-b border-[rgba(99,102,241,0.08)] pb-6">
                   <div className="flex justify-between items-center mb-3">
@@ -4139,41 +4146,33 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
               {erlangData.length > 0 && dimSummary && (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div className="bg-gradient-to-br from-indigo-900/50 to-slate-800 rounded-xl p-6 shadow-xl border border-indigo-500/20">
-                      <p className="text-slate-400 text-sm font-medium mb-1">
+                    <div className="kpi-card">
+                      <p className="kpi-label">
                         Volume Mensal Consolidado
                         {dimSummary?.numTelas && <span className="ml-2 text-cyan-400 text-xs">({dimSummary.numTelas} tela{dimSummary.numTelas > 1 ? 's' : ''})</span>}
                       </p>
-                      <div className="flex items-baseline gap-2">
-                        <h4 className="text-3xl font-bold text-indigo-400">{dimSummary.totalMonthVol.toLocaleString('pt-BR')}</h4>
-                        <span className="text-sm text-slate-500">ligações no mês</span>
-                      </div>
+                      <p className="kpi-value text-indigo-400">{dimSummary.totalMonthVol.toLocaleString('pt-BR')}</p>
+                      <p className="kpi-sub">ligações no mês</p>
                     </div>
 
-                    <div className="bg-gradient-to-br from-emerald-900/50 to-slate-800 rounded-xl p-6 shadow-xl border border-emerald-500/20">
-                      <p className="text-slate-400 text-sm font-medium mb-1">Pico de Posições (PAs Simultâneas)</p>
-                      <div className="flex items-baseline gap-2">
-                        <h4 className="text-3xl font-bold text-emerald-400">{dimSummary.maxPAs}</h4>
-                        <span className="text-sm text-slate-500">operadores no maior pico</span>
-                      </div>
+                    <div className="kpi-card">
+                      <p className="kpi-label">Pico de Posições (PAs Simultâneas)</p>
+                      <p className="kpi-value text-emerald-400">{dimSummary.maxPAs}</p>
+                      <p className="kpi-sub">operadores no maior pico</p>
                     </div>
 
-                    <div className="bg-gradient-to-br from-blue-900/50 to-slate-800 rounded-xl p-6 shadow-xl border border-blue-500/20">
-                      <p className="text-slate-400 text-sm font-medium mb-1">Média de PAs (Horário Aberto)</p>
-                      <div className="flex items-baseline gap-2">
-                        <h4 className="text-3xl font-bold text-blue-400">{dimSummary.avgPAs}</h4>
-                        <span className="text-sm text-slate-500">operadores logados em média</span>
-                      </div>
+                    <div className="kpi-card">
+                      <p className="kpi-label">Média de PAs (Horário Aberto)</p>
+                      <p className="kpi-value text-blue-400">{dimSummary.avgPAs}</p>
+                      <p className="kpi-sub">operadores logados em média</p>
                     </div>
 
-                    <div className="bg-gradient-to-br from-purple-900/50 to-slate-800 rounded-xl p-6 shadow-xl border border-purple-500/20">
-                      <p className="text-slate-400 text-sm font-medium mb-1">SLA Ponderado do Mês</p>
-                      <div className="flex items-baseline gap-2">
-                        <h4 className={`text-3xl font-bold ${(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalVol * (r.finalSla || 0)), 0) / (monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0) || 1)) >= dimTargetSlaPercent ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalVol * (r.finalSla || 0)), 0) / (monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0) || 1)).toFixed(1)}%
-                        </h4>
-                        <span className="text-sm text-slate-500">de atendimento na meta</span>
-                      </div>
+                    <div className="kpi-card">
+                      <p className="kpi-label">SLA Ponderado do Mês</p>
+                      <p className={`kpi-value ${(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalVol * (r.finalSla || 0)), 0) / (monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0) || 1)) >= dimTargetSlaPercent ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalVol * (r.finalSla || 0)), 0) / (monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0) || 1)).toFixed(1)}%
+                      </p>
+                      <p className="kpi-sub">de atendimento na meta</p>
                     </div>
                   </div>
 
