@@ -1085,12 +1085,8 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
         // Infla o req bruto pelo shrinkage para que a cobertura líquida atinja a NEC real
         const origReq = byDay[dmmWeekday].map((d: any) => Math.ceil(d.requiredAgents * shrinkageFactor));
 
-        // NEC bruta por intervalo (sem inflação) - para checar cobertura líquida no pico
-        const rawNecByInterval = byDay[dmmWeekday].map((d: any) => d.requiredAgents);
-        const peakNec = rawNecByInterval.length > 0 ? Math.max(...rawNecByInterval) : 0;
-
-        // Lower bound = 1.0 (o origReq já foi inflado pelo shrinkage, nunca escalar abaixo disso)
-        let low = 1.0;
+        // Lower bound flexível para permitir que o algoritmo reduza HC se SLA for atingido com facilidade
+        let low = 0.1;
         let high = 5.0;
 
         for (let iter = 0; iter < 22; iter++) {
@@ -1103,20 +1099,15 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
           const firstDmmSla = evaluateDaySla(testSchedules, absoluteFirstDmm);
           const monthSla = evaluateMonthSla(testSchedules);
 
-          // Três condições para aceitar o schedule:
+          // Duas condições para aceitar o schedule:
           // 1. SLA do 1º DMM >= target do DMM
           // 2. SLA mensal >= target de SLA
-          // 3. Cobertura líquida no pico >= NEC Erlang do pico (garante que chegamos na NEC)
           const monthSlaTarget = dimTargetSlaPercent / 100;
           const dmmSlaTarget = dimTargetDmmSlaPercent / 100;
 
-          const peakCoverage = newWeekdaySchedule.coverage.length > 0 ? Math.max(...newWeekdaySchedule.coverage) : 0;
-          const netPeakCoverage = peakCoverage * (1 - dimShrinkage / 100);
-          const peakMet = netPeakCoverage >= peakNec;
+          const bothMet = firstDmmSla >= dmmSlaTarget && monthSla >= monthSlaTarget;
 
-          const allMet = firstDmmSla >= dmmSlaTarget && monthSla >= monthSlaTarget && peakMet;
-
-          if (allMet) {
+          if (bothMet) {
             bestSchedules = testSchedules;
             high = mid; // Tudo atendido: tenta reduzir HC
           } else {
