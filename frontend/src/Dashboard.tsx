@@ -297,6 +297,11 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   const [shrinkAbsenteeism, setShrinkAbsenteeism] = useState<number>(2.0);
   const [shrinkOther, setShrinkOther] = useState<number>(0.0);
 
+  const shrinkResult = useMemo(() => calculateShrinkageBreakdown(shrinkBaseAgents, {
+    'Férias': shrinkVacation, 'Licença médica': shrinkSickLeave, 'Treinamento': shrinkTraining,
+    'Pausas': shrinkBreaks, 'Reuniões': shrinkMeetings, 'Absentismo': shrinkAbsenteeism, 'Outros': shrinkOther
+  }), [shrinkBaseAgents, shrinkVacation, shrinkSickLeave, shrinkTraining, shrinkBreaks, shrinkMeetings, shrinkAbsenteeism, shrinkOther]);
+
   // Rotation Tab States
   const [rotYear, setRotYear] = useState<number>(new Date().getFullYear());
   const [rotMonth, setRotMonth] = useState<number>(new Date().getMonth() + 1);
@@ -4949,98 +4954,92 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
         )}
 
         {/* ==================== SHRINKAGE TAB ==================== */}
-        {activeTab === 'shrinkage' && (() => {
-          const shrinkResult = useMemo(() => calculateShrinkageBreakdown(shrinkBaseAgents, {
-            'Férias': shrinkVacation, 'Licença médica': shrinkSickLeave, 'Treinamento': shrinkTraining,
-            'Pausas': shrinkBreaks, 'Reuniões': shrinkMeetings, 'Absentismo': shrinkAbsenteeism, 'Outros': shrinkOther
-          }), [shrinkBaseAgents, shrinkVacation, shrinkSickLeave, shrinkTraining, shrinkBreaks, shrinkMeetings, shrinkAbsenteeism, shrinkOther]);
-          return (
-            <div className="space-y-5">
-              <div className="glass p-6">
-                <h2 className="text-xl font-bold text-rose-400 flex items-center gap-2 mb-6">
-                  <Users className="w-5 h-5" /> Calculadora de Shrinkage
-                </h2>
-                <p className="text-slate-400 mb-6">Configure os componentes de shrinkage para entender o impacto real no dimensionamento de pessoas. O shrinkage representa a diferença entre agentes pagos e agentes efetivamente disponíveis para atendimento.</p>
+        {activeTab === 'shrinkage' && (
+          <div className="space-y-5">
+            <div className="glass p-6">
+              <h2 className="text-xl font-bold text-rose-400 flex items-center gap-2 mb-6">
+                <Users className="w-5 h-5" /> Calculadora de Shrinkage
+              </h2>
+              <p className="text-slate-400 mb-6">Configure os componentes de shrinkage para entender o impacto real no dimensionamento de pessoas. O shrinkage representa a diferença entre agentes pagos e agentes efetivamente disponíveis para atendimento.</p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                  <div className="col-span-full">
-                    <label className="block text-sm font-medium text-slate-300 mb-2">Agentes Necessários (antes do shrinkage)</label>
-                    <input type="number" value={shrinkBaseAgents} onChange={e => setShrinkBaseAgents(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded-lg px-4 py-2.5 text-white text-lg font-bold" />
-                  </div>
-                  {[
-                    { label: 'Férias (%)', value: shrinkVacation, setter: setShrinkVacation, desc: 'Licença remunerada anual' },
-                    { label: 'Afastamento Saúde (%)', value: shrinkSickLeave, setter: setShrinkSickLeave, desc: 'Atestados médicos e licenças saúde' },
-                    { label: 'Treinamento (%)', value: shrinkTraining, setter: setShrinkTraining, desc: 'Capacitação e desenvolvimento' },
-                    { label: 'Pausas (%)', value: shrinkBreaks, setter: setShrinkBreaks, desc: 'NR17, café, banheiro' },
-                    { label: 'Reuniões (%)', value: shrinkMeetings, setter: setShrinkMeetings, desc: 'Reuniões operacionais e coaching' },
-                    { label: 'Absenteísmo (%)', value: shrinkAbsenteeism, setter: setShrinkAbsenteeism, desc: 'Faltas não justificadas' },
-                    { label: 'Outros (%)', value: shrinkOther, setter: setShrinkOther, desc: 'Outras ausências programadas' },
-                  ].map(item => (
-                    <div key={item.label}>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">{item.label}</label>
-                      <input type="number" step="0.5" min="0" max="50" value={item.value} onChange={e => item.setter(parseFloat(e.target.value) || 0)}
-                        className="input-field" />
-                      <p className="text-xs text-slate-500 mt-1">{item.desc}</p>
-                    </div>
-                  ))}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div className="col-span-full">
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Agentes Necessários (antes do shrinkage)</label>
+                  <input type="number" value={shrinkBaseAgents} onChange={e => setShrinkBaseAgents(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded-lg px-4 py-2.5 text-white text-lg font-bold" />
                 </div>
-
-                {/* Shrinkage Results */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  <div className="glass-subtle p-4 text-center">
-                    <p className="text-sm text-slate-400">Shrinkage Total</p>
-                    <p className="text-3xl font-bold text-rose-400">{shrinkResult.totalShrinkagePercent.toFixed(1)}%</p>
+                {[
+                  { label: 'Férias (%)', value: shrinkVacation, setter: setShrinkVacation, desc: 'Licença remunerada anual' },
+                  { label: 'Afastamento Saúde (%)', value: shrinkSickLeave, setter: setShrinkSickLeave, desc: 'Atestados médicos e licenças saúde' },
+                  { label: 'Treinamento (%)', value: shrinkTraining, setter: setShrinkTraining, desc: 'Capacitação e desenvolvimento' },
+                  { label: 'Pausas (%)', value: shrinkBreaks, setter: setShrinkBreaks, desc: 'NR17, café, banheiro' },
+                  { label: 'Reuniões (%)', value: shrinkMeetings, setter: setShrinkMeetings, desc: 'Reuniões operacionais e coaching' },
+                  { label: 'Absenteísmo (%)', value: shrinkAbsenteeism, setter: setShrinkAbsenteeism, desc: 'Faltas não justificadas' },
+                  { label: 'Outros (%)', value: shrinkOther, setter: setShrinkOther, desc: 'Outras ausências programadas' },
+                ].map(item => (
+                  <div key={item.label}>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">{item.label}</label>
+                    <input type="number" step="0.5" min="0" max="50" value={item.value} onChange={e => item.setter(parseFloat(e.target.value) || 0)}
+                      className="input-field" />
+                    <p className="text-xs text-slate-500 mt-1">{item.desc}</p>
                   </div>
-                  <div className="glass-subtle p-4 text-center">
-                    <p className="text-sm text-slate-400">Agentes Necessários (com shrinkage)</p>
-                    <p className="text-3xl font-bold text-amber-400">{shrinkResult.requiredWithShrinkage}</p>
-                  </div>
-                  <div className="glass-subtle p-4 text-center">
-                    <p className="text-sm text-slate-400">Eficiência do Tempo Pago</p>
-                    <p className="text-3xl font-bold text-emerald-400">{(100 - shrinkResult.efficiencyLoss).toFixed(1)}%</p>
-                  </div>
-                </div>
-
-                {/* Breakdown Table */}
-                <div className="overflow-x-auto">
-                  <table className="data-table">
-                    <thead>
-                      <tr className="border-b border-[rgba(99,102,241,0.12)]">
-                        <th className="text-left py-3 px-4 text-slate-400">Componente</th>
-                        <th className="text-center py-3 px-4 text-slate-400">%</th>
-                        <th className="text-center py-3 px-4 text-slate-400">Agentes Ausentes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {shrinkResult.components.map((c, i) => (
-                        <tr key={i} className="border-b border-[rgba(99,102,241,0.06)] hover:bg-[var(--color-bg-surface)]">
-                          <td className="py-3 px-4 text-white">{c.name}</td>
-                          <td className="py-3 px-4 text-center text-rose-300 font-medium">{c.percent.toFixed(1)}%</td>
-                          <td className="py-3 px-4 text-center text-amber-300 font-medium">{c.agentsAbsent}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot className="border-t-2 border-[rgba(99,102,241,0.12)] font-bold">
-                      <tr>
-                        <td className="py-3 px-4 text-white">TOTAL</td>
-                        <td className="py-3 px-4 text-center text-rose-400">{shrinkResult.totalShrinkagePercent.toFixed(1)}%</td>
-                        <td className="py-3 px-4 text-center text-amber-400">+{shrinkResult.additionalAgents} agentes</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-
-                <button onClick={() => exportToCSV(shrinkResult.components.map(c => ({
-                  Componente: c.name, Percentual: c.percent, 'Agentes Ausentes': c.agentsAbsent
-                })), `shrinkage_${shrinkBaseAgents}agentes.csv`)}
-                  className="mt-4 btn-ghost px-4 py-2 text-sm">
-                  Exportar CSV
-                </button>
+                ))}
               </div>
+
+              {/* Shrinkage Results */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="glass-subtle p-4 text-center">
+                  <p className="text-sm text-slate-400">Shrinkage Total</p>
+                  <p className="text-3xl font-bold text-rose-400">{shrinkResult.totalShrinkagePercent.toFixed(1)}%</p>
+                </div>
+                <div className="glass-subtle p-4 text-center">
+                  <p className="text-sm text-slate-400">Agentes Necessários (com shrinkage)</p>
+                  <p className="text-3xl font-bold text-amber-400">{shrinkResult.requiredWithShrinkage}</p>
+                </div>
+                <div className="glass-subtle p-4 text-center">
+                  <p className="text-sm text-slate-400">Eficiência do Tempo Pago</p>
+                  <p className="text-3xl font-bold text-emerald-400">{(100 - shrinkResult.efficiencyLoss).toFixed(1)}%</p>
+                </div>
+              </div>
+
+              {/* Breakdown Table */}
+              <div className="overflow-x-auto">
+                <table className="data-table">
+                  <thead>
+                    <tr className="border-b border-[rgba(99,102,241,0.12)]">
+                      <th className="text-left py-3 px-4 text-slate-400">Componente</th>
+                      <th className="text-center py-3 px-4 text-slate-400">%</th>
+                      <th className="text-center py-3 px-4 text-slate-400">Agentes Ausentes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shrinkResult.components.map((c, i) => (
+                      <tr key={i} className="border-b border-[rgba(99,102,241,0.06)] hover:bg-[var(--color-bg-surface)]">
+                        <td className="py-3 px-4 text-white">{c.name}</td>
+                        <td className="py-3 px-4 text-center text-rose-300 font-medium">{c.percent.toFixed(1)}%</td>
+                        <td className="py-3 px-4 text-center text-amber-300 font-medium">{c.agentsAbsent}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="border-t-2 border-[rgba(99,102,241,0.12)] font-bold">
+                    <tr>
+                      <td className="py-3 px-4 text-white">TOTAL</td>
+                      <td className="py-3 px-4 text-center text-rose-400">{shrinkResult.totalShrinkagePercent.toFixed(1)}%</td>
+                      <td className="py-3 px-4 text-center text-amber-400">+{shrinkResult.additionalAgents} agentes</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <button onClick={() => exportToCSV(shrinkResult.components.map(c => ({
+                Componente: c.name, Percentual: c.percent, 'Agentes Ausentes': c.agentsAbsent
+              })), `shrinkage_${shrinkBaseAgents}agentes.csv`)}
+                className="mt-4 btn-ghost px-4 py-2 text-sm">
+                Exportar CSV
+              </button>
             </div>
-          );
-        })()}
+          </div>
+        )}
 
         {/* ==================== ROTATION TAB ==================== */}
         {activeTab === 'rotacao' && (
