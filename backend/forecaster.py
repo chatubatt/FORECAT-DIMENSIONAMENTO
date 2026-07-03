@@ -115,13 +115,7 @@ class CallCenterForecaster:
         # Armazenar dados diários para rolling evaluation e trend detection
         self._df_daily_train = None
 
-    def _extract_features(self, df, add_lags=False):
-        """Extrai features de data para o modelo de ML.
-        
-        Args:
-            df: DataFrame com coluna 'data'
-            add_lags: Se True, calcula volume_lag_7d (apenas para treino, pois precisa de histórico)
-        """
+    def _extract_features(self, df):
         import holidays
         import calendar
         br_holidays = holidays.Brazil()
@@ -236,13 +230,6 @@ class CallCenterForecaster:
 
         # Feature: Fim da quinzena (dia > 15)
         df_features['is_quinzena_fim'] = np.where(df_features['data'].dt.day > 15, 1, 0)
-        
-        # Feature: Lag de volume (média dos últimos 7 dias) — apenas durante treino
-        if add_lags and 'volume' in df_features.columns:
-            df_features = df_features.sort_values('data')
-            df_features['volume_lag_7d'] = df_features['volume'].rolling(window=7, min_periods=1).mean().fillna(0).astype(int)
-        else:
-            df_features['volume_lag_7d'] = 0
         
         return df_features
         

@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, BarChart, Bar, ComposedChart, Area } from 'recharts';
 import { UploadCloud, Activity, Clock, CalendarDays, TrendingUp, Users } from 'lucide-react';
-import { evaluateErlangConfig, calculateStaffingStrategy, type OptimizedInterval, type SlaStrategy, type OperatingHoursConfig, type ErlangResult, calculateCostEstimate, calculateSLASensitivity, type SensitivityResult, calculateShrinkageBreakdown, calculateScenarioImpact, type ScenarioResult, exportToCSV } from './utils/erlang';
+import { evaluateErlangConfig, calculateStaffingStrategy, type OptimizedInterval, type SlaStrategy, type OperatingHoursConfig, calculateCostEstimate, calculateSLASensitivity, type SensitivityResult, calculateShrinkageBreakdown, calculateScenarioImpact, type ScenarioResult, exportToCSV } from './utils/erlang';
 
 import { calculateShifts, type ShiftType, AVAILABLE_SHIFTS, allocateShifts612_812, type ShiftAllocationResult, compareShiftCombinations, type ShiftCombinationCost, generateRotationCalendar, type RotationCalendar } from './utils/shifts';
 
@@ -964,22 +964,19 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       { time: '17:40', count: 4 }
     ];
 
-    // Fator de inflação da NEC: como o shrinkage reduz a efetividade dos agentes escalados,
-    // precisamos escalar mais agentes brutos para que a cobertura líquida atinja a NEC Erlang.
-    // Ex: shrinkage 10.53% => precisamos escalar NEC / (1 - 0.1053) agentes para ter NEC líquidos.
-    const shrinkageFactor = dimShrinkage > 0 ? 1 / (1 - dimShrinkage / 100) : 1;
-    const inflateReq = (agents: number[]) => agents.map(a => Math.ceil(a * shrinkageFactor));
+    // NOTA: requiredAgents do findMinAgents/evaluateErlangConfig já inclui shrinkage
+    // (Math.ceil(agents / (1 - shrinkage))). Não re-inflar aqui para evitar dupla contagem.
 
     let weekdayVol = 0;
     if (dmmWeekday) {
       weekdayVol = byDay[dmmWeekday].reduce((s, d) => s + d.volume, 0);
-      const req = inflateReq(byDay[dmmWeekday].map(d => d.requiredAgents));
+      const req = byDay[dmmWeekday].map(d => d.requiredAgents);
       const lbl = byDay[dmmWeekday].map(d => d.intervalo);
       baseSchedules.weekday = calculateShifts(req, lbl, dimEnabledShifts, opDays, wMin, wMax, maxPALimit, weekdayVol > 0 ? forcedEntries : []);
     }
     if (dmmSat) {
       const satVol = byDay[dmmSat].reduce((s, d) => s + d.volume, 0);
-      const req = inflateReq(byDay[dmmSat].map(d => d.requiredAgents));
+      const req = byDay[dmmSat].map(d => d.requiredAgents);
       const lbl = byDay[dmmSat].map(d => d.intervalo);
       const w = getShiftWindowIndices(lbl, dimOpHours.saturdays.start, dimOpHours.saturdays.end);
       const satShifts = dimEnabledShifts.filter(s => s !== '08:12' && s !== '05:15');
@@ -987,7 +984,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     }
     if (dmmSun) {
       const sunVol = byDay[dmmSun].reduce((s, d) => s + d.volume, 0);
-      const req = inflateReq(byDay[dmmSun].map(d => d.requiredAgents));
+      const req = byDay[dmmSun].map(d => d.requiredAgents);
       const lbl = byDay[dmmSun].map(d => d.intervalo);
       const w = getShiftWindowIndices(lbl, dimOpHours.sundays.start, dimOpHours.sundays.end);
       const sunShifts = dimEnabledShifts.filter(s => s !== '08:12' && s !== '05:15');
@@ -1082,8 +1079,8 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       let bestSchedules = { ...baseSchedules };
 
       if (dmmWeekday && byDay[dmmWeekday]) {
-        // Infla o req bruto pelo shrinkage para que a cobertura líquida atinja a NEC real
-        const origReq = byDay[dmmWeekday].map((d: any) => Math.ceil(d.requiredAgents * shrinkageFactor));
+        // requiredAgents já inclui shrinkage (findMinAgents faz Math.ceil(agents / (1-s)))
+        const origReq = byDay[dmmWeekday].map((d: any) => d.requiredAgents);
 
         // Lower bound flexível para permitir que o algoritmo reduza HC se SLA for atingido com facilidade
         let low = 0.1;
@@ -1102,10 +1099,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
           // Duas condições para aceitar o schedule:
           // 1. SLA do 1º DMM >= target do DMM
           // 2. SLA mensal >= target de SLA
-          const monthSlaTarget = dimTargetSlaPercent / 100;
-          const dmmSlaTarget = dimTargetDmmSlaPercent / 100;
-
-          const bothMet = firstDmmSla >= dmmSlaTarget && monthSla >= monthSlaTarget;
+          const bothMet = firstDmmSla >= dimTargetDmmSlaPercent && monthSla >= dimTargetSlaPercent;
 
           if (bothMet) {
             bestSchedules = testSchedules;
@@ -1134,7 +1128,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       }
 
       if (!baseRes) {
-        const req = inflateReq(intervals.map(d => d.requiredAgents));
+        const req = intervals.map(d => d.requiredAgents);
         const lbl = intervals.map(d => d.intervalo);
         let opCfg = dimOpHours.weekdays;
         let dayShifts = dimEnabledShifts;

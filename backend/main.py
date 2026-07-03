@@ -4,19 +4,22 @@ import math
 import calendar
 import datetime
 from typing import Optional
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+import traceback
 import pandas as pd
 import numpy as np
 from io import BytesIO
 from forecaster import forecaster
+from erlang import erlang_c, calc_sla, calc_asa, calc_occupancy, find_min_agents_for_sla
 
 app = FastAPI(title="Forecast API", description="API para previsão de volume e TMO de call center")
 
-# Configuração de CORS para permitir requests do frontend (React/Vite)
+ALLOWED_ORIGINS = os.environ.get("CORS_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,81 +30,22 @@ if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
 
-# ============================================================================
-# Funções auxiliares compartilhadas
-# ============================================================================
-
-def _erlang_c(agents: int, traffic: float) -> float:
-    """Calcula a probabilidade de espera (Erlang C).
-
-    Args:
-        agents: Número de agentes
-        traffic: Tráfego em Erlangs
-
-    Returns:
-        Probabilidade de espera P(Wait > 0)
-    """
-    if agents <= 0 or traffic <= 0:
-        return 1.0
-    if agents <= traffic:
-        return 1.0
-    # Inversão de Erlang B
-    invB = 1.0
-    for i in range(1, agents + 1):
-        invB = 1.0 + invB * (i / traffic)
-    erlangB = 1.0 / invB
-    prob_wait = erlangB / (1.0 - (traffic / agents) * (1.0 - erlangB))
-    return max(0.0, min(1.0, prob_wait))
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        raise exc
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Erro interno do servidor: {str(exc)}"}
+    )
 
 
-def _calc_sla(prob_wait: float, agents: int, traffic: float, sla_time: int, tmo: int) -> float:
-    """Calcula o SLA percentual usando Erlang C."""
-    if agents <= traffic or tmo <= 0:
-        return 0.0
-    sla = (1.0 - prob_wait * np.exp(-(agents - traffic) * (sla_time / tmo))) * 100
-    return float(max(0.0, min(100.0, sla)))
-
-
-def _calc_asa(prob_wait: float, agents: int, traffic: float, tmo: int) -> float:
-    """Calcula o tempo médio de atendimento (ASA) em segundos."""
-    if agents <= traffic or tmo <= 0:
-        return 0.0
-    asa = (prob_wait * tmo) / (agents - traffic)
-    return float(asa)
-
-
-def _calc_occupancy(traffic: float, agents: int) -> float:
-    """Calcula a ocupação percentual dos agentes."""
-    if agents <= 0:
-        return 0.0
-    return float(min(100.0, (traffic / agents) * 100))
-
-
-def _find_min_agents_for_sla(
-    volume: int, tmo: int, interval_seconds: int,
-    target_sla: float, sla_time: int, max_agents: int = 500
-) -> int:
-    """Encontra o número mínimo de agentes para atingir o SLA alvo via busca binária."""
-    traffic = (volume / interval_seconds) * tmo
-    lo, hi = 1, max(traffic + 1, 2)
-    # Ajustar limite superior se necessário
-    while hi <= max_agents:
-        pw = _erlang_c(hi, traffic)
-        sla = _calc_sla(pw, hi, traffic, sla_time, tmo)
-        if sla >= target_sla:
-            break
-        hi = int(hi * 1.5) + 1
-
-    # Busca binária
-    while lo < hi:
-        mid = (lo + hi) // 2
-        pw = _erlang_c(mid, traffic)
-        sla = _calc_sla(pw, mid, traffic, sla_time, tmo)
-        if sla >= target_sla:
-            hi = mid
-        else:
-            lo = mid + 1
-    return lo
+def _validate_positive(value, name: str):
+    v = float(value)
+    if v <= 0:
+        raise HTTPException(status_code=400, detail=f"{name} deve ser maior que zero")
+    return v
 
 
 # ============================================================================
@@ -619,7 +563,7 @@ async def scenario_whatif(
 
         # Cenário base para referência de custo
         base_traffic = (base_volume / interval_seconds) * tmo
-        base_agents_raw = _find_min_agents_for_sla(
+        base_agents_raw = find_min_agents_for_sla(
             base_volume, tmo, interval_seconds,
             target_sla_percent, target_sla_time
         )
@@ -643,17 +587,17 @@ async def scenario_whatif(
             traffic = (cenario_volume / interval_seconds) * cenario_tmo
 
             # Encontrar agentes mínimos para SLA
-            agents_raw = _find_min_agents_for_sla(
+            agents_raw = find_min_agents_for_sla(
                 cenario_volume, cenario_tmo, interval_seconds,
                 target_sla_percent, target_sla_time
             )
             agents_with_shrink = int(np.ceil(agents_raw / (1 - shrinkage / 100))) if shrinkage < 100 else agents_raw
 
             # Métricas com os agentes encontrados
-            prob_wait = _erlang_c(agents_raw, traffic)
-            sla = _calc_sla(prob_wait, agents_raw, traffic, target_sla_time, cenario_tmo)
-            occupancy = _calc_occupancy(traffic, agents_raw)
-            asa = _calc_asa(prob_wait, agents_raw, traffic, cenario_tmo)
+            prob_wait = erlang_c(agents_raw, traffic)
+            sla = calc_sla(prob_wait, agents_raw, traffic, target_sla_time, cenario_tmo)
+            occupancy = calc_occupancy(traffic, agents_raw)
+            asa = calc_asa(prob_wait, agents_raw, traffic, cenario_tmo)
 
             # Delta de custo em relação ao cenário base
             cost_delta = ((agents_with_shrink - base_agents_with_shrink) / base_agents_with_shrink * 100) if base_agents_with_shrink > 0 else 0
@@ -1167,7 +1111,7 @@ def occupancy_analysis(
 
             # Agentes necessários (SLA target)
             if vol_medio > 0 and tmo_medio > 0:
-                agents_medio = _find_min_agents_for_sla(
+                agents_medio = find_min_agents_for_sla(
                     int(vol_medio), int(tmo_medio), interval_seconds,
                     target_sla_percent, target_sla_time
                 )
@@ -1177,7 +1121,7 @@ def occupancy_analysis(
                 agents_medio_shrink = 0
 
             if vol_max > 0 and tmo_medio > 0:
-                agents_pico = _find_min_agents_for_sla(
+                agents_pico = find_min_agents_for_sla(
                     vol_max, int(tmo_medio), interval_seconds,
                     target_sla_percent, target_sla_time
                 )
@@ -1187,13 +1131,13 @@ def occupancy_analysis(
                 agents_pico_shrink = 0
 
             # Ocupação
-            occ_medio = _calc_occupancy(traffic_medio, agents_medio)
-            occ_pico = _calc_occupancy(traffic_pico, agents_medio)  # Ocupação no pico com agentes médios
+            occ_medio = calc_occupancy(traffic_medio, agents_medio)
+            occ_pico = calc_occupancy(traffic_pico, agents_medio)  # Ocupação no pico com agentes médios
 
             # SLA no pico com agentes médios
             if agents_medio > 0:
-                pw_pico = _erlang_c(agents_medio, traffic_pico)
-                sla_pico = _calc_sla(pw_pico, agents_medio, traffic_pico, target_sla_time, int(tmo_medio))
+                pw_pico = erlang_c(agents_medio, traffic_pico)
+                sla_pico = calc_sla(pw_pico, agents_medio, traffic_pico, target_sla_time, int(tmo_medio))
             else:
                 sla_pico = 0.0
 
@@ -1353,15 +1297,15 @@ def wfm_summary(
             traffic = (vol / interval_seconds) * tmo_int
             total_erlangs_dia += traffic
 
-            agents_raw = _find_min_agents_for_sla(
+            agents_raw = find_min_agents_for_sla(
                 vol, int(tmo_int), interval_seconds,
                 target_sla_percent, target_sla_time
             )
             agents_shrink = int(np.ceil(agents_raw / (1 - shrinkage / 100))) if shrinkage < 100 else agents_raw
 
-            pw = _erlang_c(agents_raw, traffic)
-            sla = _calc_sla(pw, agents_raw, traffic, target_sla_time, int(tmo_int))
-            occ = _calc_occupancy(traffic, agents_raw)
+            pw = erlang_c(agents_raw, traffic)
+            sla = calc_sla(pw, agents_raw, traffic, target_sla_time, int(tmo_int))
+            occ = calc_occupancy(traffic, agents_raw)
 
             agents_por_intervalo.append({
                 "intervalo": interv.get('intervalo', ''),
@@ -1403,7 +1347,7 @@ def wfm_summary(
                 if vol <= 0 or tmo_int <= 0:
                     continue
                 traffic = (vol / interval_seconds) * tmo_int
-                agents_raw = _find_min_agents_for_sla(
+                agents_raw = find_min_agents_for_sla(
                     vol, int(tmo_int), interval_seconds,
                     target_sla_percent, target_sla_time
                 )
@@ -1586,17 +1530,17 @@ async def multi_queue_dimensioning(
             total_erlangs += traffic
 
             # Encontrar agentes mínimos para SLA
-            agents_raw = _find_min_agents_for_sla(
+            agents_raw = find_min_agents_for_sla(
                 volume, tmo, interval_seconds,
                 target_sla_percent, target_sla_time
             )
             agents_with_shrink = int(np.ceil(agents_raw / (1 - shrinkage / 100))) if shrinkage < 100 else agents_raw
 
             # Métricas
-            pw = _erlang_c(agents_raw, traffic)
-            sla = _calc_sla(pw, agents_raw, traffic, target_sla_time, tmo)
-            occupancy = _calc_occupancy(traffic, agents_raw)
-            asa = _calc_asa(pw, agents_raw, traffic, tmo)
+            pw = erlang_c(agents_raw, traffic)
+            sla = calc_sla(pw, agents_raw, traffic, target_sla_time, tmo)
+            occupancy = calc_occupancy(traffic, agents_raw)
+            asa = calc_asa(pw, agents_raw, traffic, tmo)
 
             resultados_filas.append({
                 "name": nome,
@@ -1634,7 +1578,7 @@ async def multi_queue_dimensioning(
         tmo_ponderado = int(sum(f['volume'] * f['tmo'] for f in filas_validas) / total_volume_combined) if total_volume_combined > 0 else 240
 
         # Agentes otimizados para tráfego combinado
-        agents_combined_raw = _find_min_agents_for_sla(
+        agents_combined_raw = find_min_agents_for_sla(
             total_volume_combined, tmo_ponderado, interval_seconds,
             target_sla_percent, target_sla_time
         )
@@ -1655,9 +1599,9 @@ async def multi_queue_dimensioning(
 
         # SLA combinado
         traffic_combined = total_erlangs
-        pw_combined = _erlang_c(agents_combined_raw, traffic_combined)
-        sla_combined = _calc_sla(pw_combined, agents_combined_raw, traffic_combined, target_sla_time, tmo_ponderado)
-        occupancy_combined = _calc_occupancy(traffic_combined, agents_combined_raw)
+        pw_combined = erlang_c(agents_combined_raw, traffic_combined)
+        sla_combined = calc_sla(pw_combined, agents_combined_raw, traffic_combined, target_sla_time, tmo_ponderado)
+        occupancy_combined = calc_occupancy(traffic_combined, agents_combined_raw)
 
         return {
             "configuracao": {

@@ -639,7 +639,6 @@ export function allocateShifts612_812(
     if (!bestCand) {
       // Fallback: if no candidate covers the exact peak, pick any candidate that reduces the overall deficit
       for (const cand of candidates) {
-        let reduction = 0;
         const limit = Math.min(cand.end, n);
 
         // Se a adição deste turno exceder o limite de PAs em qualquer intervalo, ignorar candidato
@@ -652,6 +651,10 @@ export function allocateShifts612_812(
         }
         if (wouldViolateLimit) continue;
 
+        let reduction = 0;
+        for (let j = cand.start; j < limit; j++) {
+          reduction += Math.min(deficit[j], 1) * deficit[j];
+        }
         if (reduction === 0) continue;
 
         const validDuration = Math.max(1, limit - cand.start);
@@ -827,6 +830,8 @@ export function compareShiftCombinations(
 
 // ===========================================================================
 // FERIADOS NACIONAIS BRASILEIROS 2024-2026
+// NOTA: Manter sincronizado com a lib `holidays` do Python (forecaster.py).
+// Considere migrar para um endpoint da API que retorne os feriados dinamicamente.
 // ===========================================================================
 
 export const BRAZILIAN_HOLIDAYS_2024_2026: Record<string, string[]> = {
