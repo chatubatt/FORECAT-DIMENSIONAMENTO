@@ -121,6 +121,18 @@ export interface SavedStaffingScenario {
   avgPAs: number;
   finalSla: number;
   shiftsUsed: ShiftType[];
+  targetSlaPercent: number;
+  dimShrinkageConfig: Record<string, { abs: number; nr17: number; treinamento: number; turnover: number; outros: number }>;
+  dimOpHours: OperatingHoursConfig;
+  dimFixedAgents: number | '';
+  dimTma: number | '';
+  dimFixedVolume: number | '';
+  dimQuantidadeTelas: number | '';
+  costPerAgent: number;
+  overheadPercent: number;
+  patienceTime: number;
+  dimEnabledShifts: ShiftType[];
+  autoAllocMode: ShiftType[];
 }
 
 interface HistoryStats {
@@ -465,6 +477,18 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     setDimSelectedDay(scenario.targetDate);
     setDimStrategy(scenario.strategy);
     setDimEnabledShifts(scenario.shiftsUsed);
+    if (scenario.targetSlaPercent !== undefined) setDimTargetSlaPercent(scenario.targetSlaPercent);
+    if (scenario.dimShrinkageConfig) setDimShrinkageConfig(JSON.parse(JSON.stringify(scenario.dimShrinkageConfig)));
+    if (scenario.dimOpHours) setDimOpHours(JSON.parse(JSON.stringify(scenario.dimOpHours)));
+    if (scenario.dimFixedAgents !== undefined) setDimFixedAgents(scenario.dimFixedAgents);
+    if (scenario.dimTma !== undefined) setDimTma(scenario.dimTma);
+    if (scenario.dimFixedVolume !== undefined) setDimFixedVolume(scenario.dimFixedVolume);
+    if (scenario.dimQuantidadeTelas !== undefined) setDimQuantidadeTelas(scenario.dimQuantidadeTelas);
+    if (scenario.costPerAgent !== undefined) setCostPerAgent(scenario.costPerAgent);
+    if (scenario.overheadPercent !== undefined) setOverheadPercent(scenario.overheadPercent);
+    if (scenario.patienceTime !== undefined) setPatienceTime(scenario.patienceTime);
+    if (scenario.dimEnabledShifts) setDimEnabledShifts([...scenario.dimEnabledShifts]);
+    if (scenario.autoAllocMode) setAutoAllocMode([...scenario.autoAllocMode]);
     setActiveTab('dimensionamento');
   };
 
@@ -2388,7 +2412,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                 <p className="text-slate-400 text-center py-10">Você ainda não salvou nenhum cenário de dimensionamento.</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
+                    <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="border-b border-[rgba(99,102,241,0.12)] text-slate-400 text-sm">
                         <th className="py-3 px-4">Nome do Cenário</th>
@@ -2396,6 +2420,8 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                         <th className="py-3 px-4">Estratégia SLA</th>
                         <th className="py-3 px-4 text-center">HC Total</th>
                         <th className="py-3 px-4 text-center">PAs Máx</th>
+                        <th className="py-3 px-4 text-center">Meta SLA</th>
+                        <th className="py-3 px-4 text-center">Turnos</th>
                         <th className="py-3 px-4 text-right">Ações</th>
                       </tr>
                     </thead>
@@ -2403,10 +2429,12 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                       {staffingScenarios.map(s => (
                         <tr key={s.id} className="border-b border-[rgba(99,102,241,0.08)] hover:bg-slate-700/20 transition-colors">
                           <td className="py-4 px-4 font-medium text-slate-200">{s.name}</td>
-                          <td className="py-4 px-4 text-sm text-blue-300">{new Date(s.targetDate + "T00:00:00").toLocaleDateString('pt-BR')}</td>
+                          <td className="py-4 px-4 text-sm text-blue-300">{s.targetDate ? new Date(s.targetDate + "T00:00:00").toLocaleDateString('pt-BR') : '-'}</td>
                           <td className="py-4 px-4 text-sm text-emerald-400 font-semibold">{s.strategy}</td>
                           <td className="py-4 px-4 text-center font-bold text-amber-400">{s.totalMonthlyHC}</td>
                           <td className="py-4 px-4 text-center font-bold text-slate-300">{s.peakPAs}</td>
+                          <td className="py-4 px-4 text-center text-slate-300">{s.targetSlaPercent ?? '-'}%</td>
+                          <td className="py-4 px-4 text-center text-xs text-slate-400">{(s.dimEnabledShifts || s.shiftsUsed)?.join(', ') || '-'}</td>
                           <td className="py-4 px-4 text-right">
                             <div className="flex justify-end gap-2">
                               <button onClick={() => loadStaffingScenario(s)} className="px-3 py-1 bg-orange-600/20 text-orange-400 hover:bg-orange-600/40 rounded text-xs font-medium transition-colors">
@@ -4233,7 +4261,19 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                               peakPAs: dimSummary.maxPAs,
                               avgPAs: dimSummary.avgPAs,
                               finalSla: dimSummary.finalSla,
-                              shiftsUsed: dimEnabledShifts
+                              shiftsUsed: dimEnabledShifts,
+                              targetSlaPercent: dimTargetSlaPercent,
+                              dimShrinkageConfig: JSON.parse(JSON.stringify(dimShrinkageConfig)),
+                              dimOpHours: JSON.parse(JSON.stringify(dimOpHours)),
+                              dimFixedAgents: dimFixedAgents,
+                              dimTma: dimTma,
+                              dimFixedVolume: dimFixedVolume,
+                              dimQuantidadeTelas: dimQuantidadeTelas,
+                              costPerAgent: costPerAgent,
+                              overheadPercent: overheadPercent,
+                              patienceTime: patienceTime,
+                              dimEnabledShifts: [...dimEnabledShifts],
+                              autoAllocMode: [...autoAllocMode]
                             };
                             const updated = [...staffingScenarios, newScenario];
                             setStaffingScenarios(updated);
