@@ -1085,10 +1085,15 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
         // Infla o req bruto pelo shrinkage para que a cobertura líquida atinja a NEC real
         const origReq = byDay[dmmWeekday].map((d: any) => Math.ceil(d.requiredAgents * shrinkageFactor));
 
-        let low = 0.8;  // Começar já acima da escala mínima (inflada pelo shrinkage já é 1x)
-        let high = 5.0; // Allow up to 5x scale if the chosen DMM is much smaller than the 1st DMM
+        // NEC bruta por intervalo (sem inflação) - para checar cobertura líquida no pico
+        const rawNecByInterval = byDay[dmmWeekday].map((d: any) => d.requiredAgents);
+        const peakNec = rawNecByInterval.length > 0 ? Math.max(...rawNecByInterval) : 0;
 
-        for (let iter = 0; iter < 20; iter++) { // 20 iterations for better precision
+        // Lower bound = 1.0 (o origReq já foi inflado pelo shrinkage, nunca escalar abaixo disso)
+        let low = 1.0;
+        let high = 5.0;
+
+        for (let iter = 0; iter < 22; iter++) {
           const mid = (low + high) / 2;
           const scaledReq = origReq.map((r: number) => Math.round(r * mid));
 
@@ -1098,16 +1103,24 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
           const firstDmmSla = evaluateDaySla(testSchedules, absoluteFirstDmm);
           const monthSla = evaluateMonthSla(testSchedules);
 
-          // Ambos os targets devem ser atingidos: SLA do 1º DMM e SLA mensal da meta
+          // Três condições para aceitar o schedule:
+          // 1. SLA do 1º DMM >= target do DMM
+          // 2. SLA mensal >= target de SLA
+          // 3. Cobertura líquida no pico >= NEC Erlang do pico (garante que chegamos na NEC)
           const monthSlaTarget = dimTargetSlaPercent / 100;
           const dmmSlaTarget = dimTargetDmmSlaPercent / 100;
-          const bothMet = firstDmmSla >= dmmSlaTarget && monthSla >= monthSlaTarget;
 
-          if (bothMet) {
+          const peakCoverage = newWeekdaySchedule.coverage.length > 0 ? Math.max(...newWeekdaySchedule.coverage) : 0;
+          const netPeakCoverage = peakCoverage * (1 - dimShrinkage / 100);
+          const peakMet = netPeakCoverage >= peakNec;
+
+          const allMet = firstDmmSla >= dmmSlaTarget && monthSla >= monthSlaTarget && peakMet;
+
+          if (allMet) {
             bestSchedules = testSchedules;
-            high = mid; // Ambos atendidos: tenta reduzir HC (menor K)
+            high = mid; // Tudo atendido: tenta reduzir HC
           } else {
-            low = mid; // Algum não atendido: precisa de mais HC (maior K)
+            low = mid; // Algum critério não atendido: escala para cima
           }
         }
       }
