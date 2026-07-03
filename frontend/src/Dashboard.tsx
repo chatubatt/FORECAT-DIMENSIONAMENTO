@@ -251,6 +251,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   const [dimQuantidadeTelas, setDimQuantidadeTelas] = useState<number | ''>(''); // Quantidade de telas/posições
   const [dimSelectedDay, setDimSelectedDay] = useState<string>(''); // Data selecionada para o dimensionamento
   const [dimShowConsolidated, setDimShowConsolidated] = useState<boolean>(true);
+  const [editedShiftCounts, setEditedShiftCounts] = useState<Record<string, number>>({});
   const [coverageChartKey, setCoverageChartKey] = useState<number>(0);
 
   const [dimStrategy, setDimStrategy] = useState<SlaStrategy>('monthly_avg');
@@ -474,6 +475,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   };
 
   const loadStaffingScenario = (scenario: SavedStaffingScenario) => {
+    setEditedShiftCounts({});
     setDimSelectedDay(scenario.targetDate);
     setDimStrategy(scenario.strategy);
     setDimEnabledShifts(scenario.shiftsUsed);
@@ -981,7 +983,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     // Pre-calculate shiftRes for these DMMs
     let baseSchedules: Record<string, any> = {};
     const forcedEntries = [
-      { time: '00:00', count: 2 },
+      { time: '00:00', count: 4 },
       { time: '17:40', count: 2 }
     ];
 
@@ -1262,17 +1264,8 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
       const finalSla = openVol > 0 ? (volOk / openVol) : (isDayClosed ? null : 100);
 
-      const maxPAs = Math.max(...newIntervals.map(i => i.requiredAgents));
-
-      let totalCoverage = 0;
-      let activeCount = 0;
-      newIntervals.forEach((d, idx) => {
-        if (!d.isClosed && d.volume > 0) {
-          totalCoverage += (shiftRes.coverage[idx] || 0);
-          activeCount++;
-        }
-      });
-      const avgPAs = activeCount > 0 ? Math.round(totalCoverage / activeCount) : 0;
+      const maxPAs = Math.max(...newIntervals.map(i => i.agents));
+      const dimBase = Math.max(...newIntervals.map(i => i.requiredAgents));
 
       const activeIntervals = newIntervals.filter(d => !d.isClosed && d.volume > 0);
       const avgOccupancy = activeIntervals.length > 0
@@ -1288,7 +1281,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
         tmoAvg: tmoAvg.toFixed(0),
         finalSla: finalSla === null ? null : Math.round(finalSla),
         maxPAs,
-        avgPAs: Math.round(avgPAs),
+        avgPAs: Math.round(dimBase),
         avgOccupancy: Math.round(avgOccupancy),
         shiftRes,
         fixedHiredHC,
@@ -4245,7 +4238,14 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                   {shiftSchedule && (
                     <div className="glass p-6 mb-6">
                       <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-lg font-semibold text-emerald-400">Escala Simulada (Algoritmo Guloso)</h3>
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-lg font-semibold text-emerald-400">Escala Simulada (Algoritmo Guloso)</h3>
+                          {Object.keys(editedShiftCounts).length > 0 && (
+                            <button onClick={() => setEditedShiftCounts({})} className="text-xs text-slate-400 hover:text-white btn-ghost px-2 py-1">
+                              ↺ Resetar Edições
+                            </button>
+                          )}
+                        </div>
                         <button
                           className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded shadow transition font-semibold"
                           onClick={() => {
@@ -4438,20 +4438,48 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                             </tr>
                           </thead>
                           <tbody>
-                            {shiftSchedule.schedules.map((s: any, idx: number) => (
-                              <tr key={idx}>
-                                <td className="font-medium"><span className="text-emerald-400">{s.shift.label}</span></td>
-                                <td>{s.startTime}</td>
-                                <td className="text-[var(--color-text-muted)]">{s.shift.durationMinutes}min</td>
-                                <td><span className="font-bold text-white">{s.count}</span></td>
-                              </tr>
-                            ))}
+                            {shiftSchedule.schedules.map((s: any, idx: number) => {
+                              const editKey = `${s.shift.type}_${s.startTime}`;
+                              const displayCount = editedShiftCounts[editKey] ?? s.count;
+                              return (
+                                <tr key={idx}>
+                                  <td className="font-medium"><span className="text-emerald-400">{s.shift.label}</span></td>
+                                  <td>{s.startTime}</td>
+                                  <td className="text-[var(--color-text-muted)]">{s.shift.durationMinutes}min</td>
+                                  <td>
+                                    <input
+                                      type="number"
+                                      min={s.startTime === '00:00' ? 4 : 0}
+                                      value={displayCount}
+                                      onChange={e => {
+                                        const val = Math.max(s.startTime === '00:00' ? 4 : 0, Number(e.target.value));
+                                        setEditedShiftCounts(prev => ({ ...prev, [editKey]: val }));
+                                      }}
+                                      className="w-16 bg-[var(--color-bg-surface)] border border-[rgba(99,102,241,0.12)] rounded p-1 text-white font-bold text-center text-sm outline-none focus:border-blue-500"
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            })}
                             {shiftSchedule.schedules.length === 0 && (
                               <tr>
                                 <td colSpan={4} className="text-center text-[var(--color-text-muted)] py-8">Nenhum turno simulado para este dia</td>
                               </tr>
                             )}
                           </tbody>
+                          {shiftSchedule.schedules.length > 0 && (
+                            <tfoot className="border-t-2 border-blue-500 bg-slate-700/80">
+                              <tr className="font-bold text-sm">
+                                <td className="py-2 px-4 text-slate-300" colSpan={3}>TOTAL</td>
+                                <td className="py-2 px-4 text-center text-emerald-400">
+                                  {shiftSchedule.schedules.reduce((sum: number, s: { shift: { type: string }; startTime: string; count: number }) => {
+                                    const editKey = `${s.shift.type}_${s.startTime}`;
+                                    return sum + (editedShiftCounts[editKey] ?? s.count);
+                                  }, 0)}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          )}
                         </table>
                       </div>
                     </div>
