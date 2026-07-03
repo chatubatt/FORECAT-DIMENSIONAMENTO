@@ -964,16 +964,22 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       { time: '17:40', count: 4 }
     ];
 
+    // Fator de inflação da NEC: como o shrinkage reduz a efetividade dos agentes escalados,
+    // precisamos escalar mais agentes brutos para que a cobertura líquida atinja a NEC Erlang.
+    // Ex: shrinkage 10.53% => precisamos escalar NEC / (1 - 0.1053) agentes para ter NEC líquidos.
+    const shrinkageFactor = dimShrinkage > 0 ? 1 / (1 - dimShrinkage / 100) : 1;
+    const inflateReq = (agents: number[]) => agents.map(a => Math.ceil(a * shrinkageFactor));
+
     let weekdayVol = 0;
     if (dmmWeekday) {
       weekdayVol = byDay[dmmWeekday].reduce((s, d) => s + d.volume, 0);
-      const req = byDay[dmmWeekday].map(d => d.requiredAgents);
+      const req = inflateReq(byDay[dmmWeekday].map(d => d.requiredAgents));
       const lbl = byDay[dmmWeekday].map(d => d.intervalo);
       baseSchedules.weekday = calculateShifts(req, lbl, dimEnabledShifts, opDays, wMin, wMax, maxPALimit, weekdayVol > 0 ? forcedEntries : []);
     }
     if (dmmSat) {
       const satVol = byDay[dmmSat].reduce((s, d) => s + d.volume, 0);
-      const req = byDay[dmmSat].map(d => d.requiredAgents);
+      const req = inflateReq(byDay[dmmSat].map(d => d.requiredAgents));
       const lbl = byDay[dmmSat].map(d => d.intervalo);
       const w = getShiftWindowIndices(lbl, dimOpHours.saturdays.start, dimOpHours.saturdays.end);
       const satShifts = dimEnabledShifts.filter(s => s !== '08:12' && s !== '05:15');
@@ -981,7 +987,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     }
     if (dmmSun) {
       const sunVol = byDay[dmmSun].reduce((s, d) => s + d.volume, 0);
-      const req = byDay[dmmSun].map(d => d.requiredAgents);
+      const req = inflateReq(byDay[dmmSun].map(d => d.requiredAgents));
       const lbl = byDay[dmmSun].map(d => d.intervalo);
       const w = getShiftWindowIndices(lbl, dimOpHours.sundays.start, dimOpHours.sundays.end);
       const sunShifts = dimEnabledShifts.filter(s => s !== '08:12' && s !== '05:15');
@@ -1118,7 +1124,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       }
 
       if (!baseRes) {
-        const req = intervals.map(d => d.requiredAgents);
+        const req = inflateReq(intervals.map(d => d.requiredAgents));
         const lbl = intervals.map(d => d.intervalo);
         let opCfg = dimOpHours.weekdays;
         let dayShifts = dimEnabledShifts;
@@ -1354,7 +1360,8 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     // fazer cálculo direto como fallback garantido
     const totalCoverage = result?.coverage?.reduce((s: number, v: number) => s + v, 0) || 0;
     if (!result || totalCoverage === 0) {
-      const requiredAgents = erlangData.map(d => d.requiredAgents);
+      const sfactor = dimShrinkage > 0 ? 1 / (1 - dimShrinkage / 100) : 1;
+      const requiredAgents = erlangData.map(d => Math.ceil(d.requiredAgents * sfactor));
       const intervalLabels = erlangData.map(d => d.intervalo);
       const opDays = 7 - (dimOpHours.sundays.closed ? 1 : 0) - (dimOpHours.saturdays.closed ? 1 : 0);
       
