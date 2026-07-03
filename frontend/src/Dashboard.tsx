@@ -4344,27 +4344,38 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
                   {coverageChartData.length > 0 && (
                     <div className="glass p-6">
-                      <h3 className="text-lg font-semibold mb-6 text-purple-400">Cobertura de Escala vs PAs Necessárias</h3>
-                      <div className="h-80">
+                      <div className="section-header mb-6">
+                        <div className="section-icon text-violet-400 bg-violet-500/10"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg></div>
+                        <div>
+                          <h3 className="text-base text-violet-400">Cobertura de Escala vs PAs Necessárias</h3>
+                          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Distribuição dos turnos alocados sobre a demanda Erlang</p>
+                        </div>
+                      </div>
+                      <div className="h-96">
                         <ResponsiveContainer width="100%" height="100%">
-                          <ComposedChart data={coverageChartData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                            <XAxis dataKey="intervalo" stroke="#94a3b8" fontSize={12} tickMargin={10} />
-                            <YAxis yAxisId="left" stroke="#3b82f6" fontSize={12} orientation="left" />
-                            <YAxis yAxisId="right" stroke="#64748b" fontSize={12} orientation="right" hide />
-                            <RechartsTooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '0.5rem' }} />
-                            <Legend />
+                          <ComposedChart data={coverageChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,102,241,0.06)" vertical={false} />
+                            <XAxis dataKey="intervalo" stroke="#5b6a8a" fontSize={11} tickMargin={8} axisLine={false} tickLine={false} />
+                            <YAxis yAxisId="left" stroke="#5b6a8a" fontSize={11} axisLine={false} tickLine={false} />
+                            <RechartsTooltip
+                              contentStyle={{ backgroundColor: '#121830', border: '1px solid rgba(99,102,241,0.15)', borderRadius: '10px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
+                              labelStyle={{ color: '#94a3b8', fontSize: 12, fontWeight: 600, marginBottom: 4 }}
+                            />
+                            <Legend
+                              wrapperStyle={{ fontSize: 12, paddingTop: 12 }}
+                              formatter={(value: string) => <span style={{ color: '#94a3b8' }}>{value}</span>}
+                            />
                             {AVAILABLE_SHIFTS.map((shift: any, idx: number) => {
                               if (!dimEnabledShifts.includes(shift.type)) return null;
-                              const colors = ['#fde047', '#3b82f6', '#10b981', '#a855f7', '#ec4899', '#f97316', '#14b8a6', '#6366f1', '#eab308'];
+                              const colors = ['#818cf8', '#6366f1', '#4f46e5', '#a78bfa', '#7c3aed', '#6d28d9', '#8b5cf6', '#c4b5fd', '#ddd6fe'];
                               const color = colors[idx % colors.length];
                               return (
-                                <Bar key={shift.type} yAxisId="left" dataKey={shift.type} name={`HC ${shift.label.split(' ')[0]}`} stackId="1" fill={color} opacity={0.9} radius={0} />
+                                <Bar key={shift.type} yAxisId="left" dataKey={shift.type} name={`HC ${shift.label}`} stackId="1" fill={color} opacity={0.85} radius={[2, 2, 0, 0]} maxBarSize={12} />
                               );
                             })}
-                            <Line yAxisId="left" type="stepAfter" dataKey="required" name="NEC BR. (PAs Erlang)" stroke="#000000" strokeWidth={3} dot={false} />
-                            <Line yAxisId="left" type="stepAfter" dataKey="satRequired" name="NEC Sábado (DMM)" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                            <Line yAxisId="left" type="stepAfter" dataKey="sunRequired" name="NEC Domingo (DMM)" stroke="#f43f5e" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                            <Line yAxisId="left" type="stepAfter" dataKey="required" name="NEC (PAs Erlang)" stroke="#fbbf24" strokeWidth={2.5} dot={false} />
+                            <Line yAxisId="left" type="stepAfter" dataKey="satRequired" name="NEC Sábado" stroke="#a78bfa" strokeWidth={2} strokeDasharray="6 4" dot={false} />
+                            <Line yAxisId="left" type="stepAfter" dataKey="sunRequired" name="NEC Domingo" stroke="#fb7185" strokeWidth={2} strokeDasharray="6 4" dot={false} />
                           </ComposedChart>
                         </ResponsiveContainer>
                       </div>
@@ -4374,25 +4385,27 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                   {(satCoverageChartData.length > 0 || sunCoverageChartData.length > 0) && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6 mb-6">
                       {satCoverageChartData.length > 0 && (
-                        <div className="glass p-6">
-                          <h3 className="text-lg font-semibold mb-6 text-purple-400">Cobertura Sábado (DMM) vs PAs Nec.</h3>
-                          <div className="h-80">
+                        <div className="glass p-5">
+                          <div className="section-header mb-4">
+                            <div className="section-icon text-violet-400 bg-violet-500/10 text-sm">S</div>
+                            <h3 className="text-sm text-violet-400">Cobertura Sábado vs PAs Nec.</h3>
+                          </div>
+                          <div className="h-72">
                             <ResponsiveContainer width="100%" height="100%">
-                              <ComposedChart data={satCoverageChartData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                                <XAxis dataKey="intervalo" stroke="#94a3b8" fontSize={12} tickMargin={10} />
-                                <YAxis yAxisId="left" stroke="#3b82f6" fontSize={12} orientation="left" />
-                                <RechartsTooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '0.5rem' }} />
-                                <Legend />
+                              <ComposedChart data={satCoverageChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,102,241,0.06)" vertical={false} />
+                                <XAxis dataKey="intervalo" stroke="#5b6a8a" fontSize={10} tickMargin={6} axisLine={false} tickLine={false} />
+                                <YAxis yAxisId="left" stroke="#5b6a8a" fontSize={10} axisLine={false} tickLine={false} />
+                                <RechartsTooltip contentStyle={{ backgroundColor: '#121830', border: '1px solid rgba(99,102,241,0.15)', borderRadius: '10px' }} labelStyle={{ color: '#94a3b8', fontSize: 11 }} />
+                                <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} formatter={(v: string) => <span style={{ color: '#94a3b8' }}>{v}</span>} />
                                 {AVAILABLE_SHIFTS.map((shift: any, idx: number) => {
                                   if (!dimEnabledShifts.includes(shift.type)) return null;
-                                  const colors = ['#fde047', '#3b82f6', '#10b981', '#a855f7', '#ec4899', '#f97316', '#14b8a6', '#6366f1', '#eab308'];
-                                  const color = colors[idx % colors.length];
+                                  const colors = ['#818cf8', '#6366f1', '#4f46e5', '#a78bfa', '#7c3aed', '#6d28d9'];
                                   return (
-                                    <Bar key={shift.type} yAxisId="left" dataKey={shift.type} name={`HC ${shift.label.split(' ')[0]}`} stackId="1" fill={color} opacity={0.9} radius={0} />
+                                    <Bar key={shift.type} yAxisId="left" dataKey={shift.type} name={`HC ${shift.label.split(' ')[0]}`} stackId="1" fill={colors[idx % colors.length]} opacity={0.85} radius={[2, 2, 0, 0]} maxBarSize={10} />
                                   );
                                 })}
-                                <Line yAxisId="left" type="stepAfter" dataKey="required" name="NEC Sábado" stroke="#8b5cf6" strokeWidth={3} dot={false} />
+                                <Line yAxisId="left" type="stepAfter" dataKey="required" name="NEC Sábado" stroke="#a78bfa" strokeWidth={2.5} dot={false} />
                               </ComposedChart>
                             </ResponsiveContainer>
                           </div>
@@ -4400,25 +4413,27 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                       )}
 
                       {sunCoverageChartData.length > 0 && (
-                        <div className="glass p-6">
-                          <h3 className="text-lg font-semibold mb-6 text-purple-400">Cobertura Domingo (DMM) vs PAs Nec.</h3>
-                          <div className="h-80">
+                        <div className="glass p-5">
+                          <div className="section-header mb-4">
+                            <div className="section-icon text-rose-400 bg-rose-500/10 text-sm">D</div>
+                            <h3 className="text-sm text-rose-400">Cobertura Domingo vs PAs Nec.</h3>
+                          </div>
+                          <div className="h-72">
                             <ResponsiveContainer width="100%" height="100%">
-                              <ComposedChart data={sunCoverageChartData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                                <XAxis dataKey="intervalo" stroke="#94a3b8" fontSize={12} tickMargin={10} />
-                                <YAxis yAxisId="left" stroke="#3b82f6" fontSize={12} orientation="left" />
-                                <RechartsTooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '0.5rem' }} />
-                                <Legend />
+                              <ComposedChart data={sunCoverageChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,102,241,0.06)" vertical={false} />
+                                <XAxis dataKey="intervalo" stroke="#5b6a8a" fontSize={10} tickMargin={6} axisLine={false} tickLine={false} />
+                                <YAxis yAxisId="left" stroke="#5b6a8a" fontSize={10} axisLine={false} tickLine={false} />
+                                <RechartsTooltip contentStyle={{ backgroundColor: '#121830', border: '1px solid rgba(99,102,241,0.15)', borderRadius: '10px' }} labelStyle={{ color: '#94a3b8', fontSize: 11 }} />
+                                <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} formatter={(v: string) => <span style={{ color: '#94a3b8' }}>{v}</span>} />
                                 {AVAILABLE_SHIFTS.map((shift: any, idx: number) => {
                                   if (!dimEnabledShifts.includes(shift.type)) return null;
-                                  const colors = ['#fde047', '#3b82f6', '#10b981', '#a855f7', '#ec4899', '#f97316', '#14b8a6', '#6366f1', '#eab308'];
-                                  const color = colors[idx % colors.length];
+                                  const colors = ['#818cf8', '#6366f1', '#4f46e5', '#a78bfa', '#7c3aed', '#6d28d9'];
                                   return (
-                                    <Bar key={shift.type} yAxisId="left" dataKey={shift.type} name={`HC ${shift.label.split(' ')[0]}`} stackId="1" fill={color} opacity={0.9} radius={0} />
+                                    <Bar key={shift.type} yAxisId="left" dataKey={shift.type} name={`HC ${shift.label.split(' ')[0]}`} stackId="1" fill={colors[idx % colors.length]} opacity={0.85} radius={[2, 2, 0, 0]} maxBarSize={10} />
                                   );
                                 })}
-                                <Line yAxisId="left" type="stepAfter" dataKey="required" name="NEC Domingo" stroke="#f43f5e" strokeWidth={3} dot={false} />
+                                <Line yAxisId="left" type="stepAfter" dataKey="required" name="NEC Domingo" stroke="#fb7185" strokeWidth={2.5} dot={false} />
                               </ComposedChart>
                             </ResponsiveContainer>
                           </div>
@@ -4428,19 +4443,28 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                   )}
 
                   <div className="glass p-6">
-                    <h3 className="text-lg font-semibold mb-6">Projeção Intra-diária: PAs x Ocupação</h3>
+                    <div className="section-header mb-6">
+                      <div className="section-icon text-amber-400 bg-amber-500/10"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg></div>
+                      <div>
+                        <h3 className="text-base text-amber-400">Projeção Intra-diária: PAs x Ocupação</h3>
+                        <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Agentes requeridos, ocupação e nível de serviço por intervalo</p>
+                      </div>
+                    </div>
                     <div className="h-80">
                       <ResponsiveContainer width="100%" height="100%">
-                        <ComposedChart data={erlangChartData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                          <XAxis dataKey="intervalo" stroke="#94a3b8" fontSize={12} tickMargin={10} />
-                          <YAxis yAxisId="left" stroke="#3b82f6" fontSize={12} orientation="left" />
-                          <YAxis yAxisId="right" stroke="#orange-400" fontSize={12} orientation="right" domain={[0, 100]} />
-                          <RechartsTooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '0.5rem' }} />
-                          <Legend />
-                          <Bar yAxisId="left" dataKey="requiredAgents" name="PAs Necessárias" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                          <Line yAxisId="right" type="monotone" dataKey="occupancy" name="Ocupação (%)" stroke="#f59e0b" strokeWidth={3} dot={{ r: 3 }} />
-                          <Line yAxisId="right" type="monotone" dataKey="serviceLevel" name="Nível de Serviço (%)" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                        <ComposedChart data={erlangChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,102,241,0.06)" vertical={false} />
+                          <XAxis dataKey="intervalo" stroke="#5b6a8a" fontSize={11} tickMargin={8} axisLine={false} tickLine={false} />
+                          <YAxis yAxisId="left" stroke="#5b6a8a" fontSize={11} axisLine={false} tickLine={false} />
+                          <YAxis yAxisId="right" stroke="#5b6a8a" fontSize={11} orientation="right" domain={[0, 100]} axisLine={false} tickLine={false} />
+                          <RechartsTooltip
+                            contentStyle={{ backgroundColor: '#121830', border: '1px solid rgba(99,102,241,0.15)', borderRadius: '10px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
+                            labelStyle={{ color: '#94a3b8', fontSize: 12, fontWeight: 600, marginBottom: 4 }}
+                          />
+                          <Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }} formatter={(v: string) => <span style={{ color: '#94a3b8' }}>{v}</span>} />
+                          <Bar yAxisId="left" dataKey="requiredAgents" name="PAs Necessárias" fill="#6366f1" opacity={0.8} radius={[4, 4, 0, 0]} maxBarSize={12} />
+                          <Line yAxisId="right" type="monotone" dataKey="occupancy" name="Ocupação (%)" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 2, fill: '#f59e0b' }} />
+                          <Line yAxisId="right" type="monotone" dataKey="serviceLevel" name="Nível de Serviço (%)" stroke="#34d399" strokeWidth={2} strokeDasharray="6 3" dot={false} />
                         </ComposedChart>
                       </ResponsiveContainer>
                     </div>
