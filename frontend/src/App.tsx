@@ -52,7 +52,6 @@ function App() {
                 {activeTab === 'metodologia' && 'Metodologia de Forecast'}
                 {activeTab === 'cenarios' && 'Cenários Salvos'}
                 {activeTab === 'shrinkage' && 'Shrinkage'}
-                {activeTab === 'whatif' && 'What-If'}
                 {activeTab === 'rotacao' && 'Rotação'}
               </h2>
               <p className="text-[0.6875rem] text-[var(--color-text-muted)]">

@@ -1,10 +1,9 @@
 import { 
   BarChart3, CalendarDays, History, Layers, TrendingUp, 
-  Users, FlaskConical, Save, Minimize2, RotateCcw, 
-  BrainCircuit, Zap
+  Users, FlaskConical, Save, Minimize2, RotateCcw, Zap
 } from 'lucide-react';
 
-export type TabKey = 'forecast' | 'calendario' | 'historico' | 'baseline' | 'previsao_mensal' | 'dimensionamento' | 'metodologia' | 'cenarios' | 'shrinkage' | 'whatif' | 'rotacao';
+export type TabKey = 'forecast' | 'calendario' | 'historico' | 'baseline' | 'previsao_mensal' | 'dimensionamento' | 'metodologia' | 'cenarios' | 'shrinkage' | 'rotacao';
 
 interface NavItem {
   key: TabKey;
@@ -24,7 +23,6 @@ const navItems: NavItem[] = [
   { key: 'metodologia', label: 'Metodologia', icon: <FlaskConical size={18} />, color: 'var(--color-accent-violet)', group: 'WFM' },
   { key: 'cenarios', label: 'Cenários Salvos', icon: <Save size={18} />, color: 'var(--color-accent-emerald)', group: 'Análise' },
   { key: 'shrinkage', label: 'Shrinkage', icon: <Minimize2 size={18} />, color: 'var(--color-accent-amber)', group: 'Análise' },
-  { key: 'whatif', label: 'What-If', icon: <BrainCircuit size={18} />, color: 'var(--color-accent-rose)', group: 'Análise' },
   { key: 'rotacao', label: 'Rotação', icon: <RotateCcw size={18} />, color: 'var(--color-accent-cyan)', group: 'Análise' },
 ];
 

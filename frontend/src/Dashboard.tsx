@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, BarChart, Bar, ComposedChart, Area } from 'recharts';
 import { UploadCloud, Activity, Clock, CalendarDays, TrendingUp, Users } from 'lucide-react';
-import { evaluateErlangConfig, calculateStaffingStrategy, type OptimizedInterval, type SlaStrategy, type OperatingHoursConfig, calculateCostEstimate, calculateSLASensitivity, type SensitivityResult, calculateShrinkageBreakdown, calculateScenarioImpact, type ScenarioResult, exportToCSV } from './utils/erlang';
+import { evaluateErlangConfig, calculateStaffingStrategy, type OptimizedInterval, type SlaStrategy, type OperatingHoursConfig, calculateCostEstimate, calculateSLASensitivity, type SensitivityResult, calculateShrinkageBreakdown, exportToCSV } from './utils/erlang';
 
 import { calculateShifts, type ShiftType, AVAILABLE_SHIFTS, allocateShifts612_812, type ShiftAllocationResult, compareShiftCombinations, type ShiftCombinationCost, generateRotationCalendar, type RotationCalendar } from './utils/shifts';
 
@@ -194,7 +194,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   const [forecastData, setForecastData] = useState<DailyForecast[]>([]);
   const [stats, setStats] = useState<HistoryStats | null>(null);
   const [loading, setLoading] = useState(false);
-  const [internalActiveTab, setInternalActiveTab] = useState<'forecast' | 'calendario' | 'historico' | 'baseline' | 'previsao_mensal' | 'dimensionamento' | 'metodologia' | 'cenarios' | 'shrinkage' | 'whatif' | 'rotacao'>('forecast');
+  const [internalActiveTab, setInternalActiveTab] = useState<'forecast' | 'calendario' | 'historico' | 'baseline' | 'previsao_mensal' | 'dimensionamento' | 'metodologia' | 'cenarios' | 'shrinkage' | 'rotacao'>('forecast');
   const activeTab = (propActiveTab as any) || internalActiveTab;
   const setActiveTab = (tab: any) => { setInternalActiveTab(tab); onTabChange?.(tab); };
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
@@ -308,15 +308,6 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   const [shrinkMeetings, setShrinkMeetings] = useState<number>(1.5);
   const [shrinkAbsenteeism, setShrinkAbsenteeism] = useState<number>(2.0);
   const [shrinkOther, setShrinkOther] = useState<number>(0.0);
-
-  // What-If Tab States
-  const [whatifBaseVolume, setWhatifBaseVolume] = useState<number>(10000);
-  const [whatifTmo, setWhatifTmo] = useState<number>(240);
-  const [whatifIntervalSec, setWhatifIntervalSec] = useState<number>(600);
-  const [whatifTargetSla, setWhatifTargetSla] = useState<number>(80);
-  const [whatifSlaTime, setWhatifSlaTime] = useState<number>(20);
-  const [whatifShrinkage, setWhatifShrinkage] = useState<number>(18.47);
-  const [whatifResults, setWhatifResults] = useState<ScenarioResult[]>([]);
 
   // Rotation Tab States
   const [rotYear, setRotYear] = useState<number>(new Date().getFullYear());
@@ -5069,149 +5060,6 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
             </div>
           );
         })()}
-
-        {/* ==================== WHAT-IF TAB ==================== */}
-        {activeTab === 'whatif' && (
-          <div key="whatif" className="space-y-5 page-enter">
-            <div className="glass p-6">
-              <h2 className="text-xl font-bold text-cyan-400 flex items-center gap-2 mb-6">
-                <TrendingUp className="w-5 h-5" /> Análise de Cenários (What-If)
-              </h2>
-              <p className="text-slate-400 mb-6">Simule diferentes cenários operacionais para entender o impacto no dimensionamento. Ideal para planejamento de contingência eCapacity planning.</p>
-
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-                <div>
-                  <label className="label-text">Volume Base (por intervalo)</label>
-                  <input type="number" value={whatifBaseVolume} onChange={e => setWhatifBaseVolume(parseInt(e.target.value) || 0)}
-                    className="input-field text-sm" />
-                </div>
-                <div>
-                  <label className="label-text">TMO (seg)</label>
-                  <input type="number" value={whatifTmo} onChange={e => setWhatifTmo(parseInt(e.target.value) || 1)}
-                    className="input-field text-sm" />
-                </div>
-                <div>
-                  <label className="label-text">Intervalo (seg)</label>
-                  <input type="number" value={whatifIntervalSec} onChange={e => setWhatifIntervalSec(parseInt(e.target.value) || 1)}
-                    className="input-field text-sm" />
-                </div>
-                <div>
-                  <label className="label-text">SLA Alvo (%)</label>
-                  <input type="number" value={whatifTargetSla} onChange={e => setWhatifTargetSla(parseFloat(e.target.value) || 1)}
-                    className="input-field text-sm" />
-                </div>
-                <div>
-                  <label className="label-text">Tempo SLA (seg)</label>
-                  <input type="number" value={whatifSlaTime} onChange={e => setWhatifSlaTime(parseInt(e.target.value) || 1)}
-                    className="input-field text-sm" />
-                </div>
-                <div>
-                  <label className="label-text">Shrinkage (%)</label>
-                  <input type="number" step="0.01" value={whatifShrinkage} onChange={e => setWhatifShrinkage(parseFloat(e.target.value) || 0)}
-                    className="input-field text-sm" />
-                </div>
-              </div>
-
-              <button onClick={() => {
-                const results = calculateScenarioImpact(
-                  whatifBaseVolume, whatifTmo, whatifIntervalSec,
-                  whatifTargetSla, whatifSlaTime, whatifShrinkage / 100,
-                  costPerAgent,
-                  [
-                    { name: 'Pico Extremo (+30%)', volumeDeltaPct: 30 },
-                    { name: 'Pico Moderado (+20%)', volumeDeltaPct: 20 },
-                    { name: 'Operação Normal', volumeDeltaPct: 0 },
-                    { name: 'Baixa Demanda (-20%)', volumeDeltaPct: -20 },
-                    { name: 'Crise (+30% vol, +15% TMO)', volumeDeltaPct: 30, tmoDeltaPct: 15 },
-                    { name: 'TMO Alto (+25% TMO)', tmoDeltaPct: 25 },
-                    { name: 'Black Friday (+50% vol)', volumeDeltaPct: 50, tmoDeltaPct: -10 },
-                  ]
-                );
-                setWhatifResults(results);
-              }}
-                className="btn-primary px-6 py-3 mb-6" style={{background: 'linear-gradient(135deg, #06b6d4, #0891b2)'}}>
-                Simular Cenários
-              </button>
-
-              {whatifResults.length > 0 && (
-                <>
-                  <div className="overflow-x-auto">
-                    <table className="data-table">
-                      <thead>
-                        <tr className="border-b border-[rgba(99,102,241,0.12)]">
-                          <th className="text-left py-3 px-3 text-slate-400">Cenário</th>
-                          <th className="text-center py-3 px-3 text-slate-400">Volume</th>
-                          <th className="text-center py-3 px-3 text-slate-400">TMO</th>
-                          <th className="text-center py-3 px-3 text-slate-400">Erlangs</th>
-                          <th className="text-center py-3 px-3 text-slate-400">PA Base</th>
-                          <th className="text-center py-3 px-3 text-slate-400">PA c/ Shrinkage</th>
-                          <th className="text-center py-3 px-3 text-slate-400">SLA</th>
-                          <th className="text-center py-3 px-3 text-slate-400">Ocupação</th>
-                          <th className="text-center py-3 px-3 text-slate-400">ASA (s)</th>
-                          <th className="text-center py-3 px-3 text-slate-400">Delta Custo</th>
-                          <th className="text-center py-3 px-3 text-slate-400">Risco</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {whatifResults.map((r, i) => (
-                          <tr key={i} className={`border-b border-[rgba(99,102,241,0.06)] hover:bg-[var(--color-bg-surface)] ${r.riskLevel === 'Crítico' ? 'bg-[rgba(251,113,133,0.06)]' : r.riskLevel === 'Alto' ? 'bg-[rgba(251,191,36,0.06)]' : ''}`}>
-                            <td className="py-3 px-3 text-white font-medium">{r.name}</td>
-                            <td className="py-3 px-3 text-center text-slate-300">{r.volume.toLocaleString()}</td>
-                            <td className="py-3 px-3 text-center text-slate-300">{r.tmo}s</td>
-                            <td className="py-3 px-3 text-center text-blue-300">{r.erlangs.toFixed(1)}</td>
-                            <td className="py-3 px-3 text-center text-white font-bold">{r.baseAgents}</td>
-                            <td className="py-3 px-3 text-center text-amber-400 font-bold">{r.requiredAgents}</td>
-                            <td className={`py-3 px-3 text-center font-medium ${r.sla >= 80 ? 'text-emerald-400' : r.sla >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{r.sla.toFixed(1)}%</td>
-                            <td className={`py-3 px-3 text-center ${r.occupancy > 90 ? 'text-red-400' : r.occupancy > 80 ? 'text-amber-400' : 'text-emerald-400'}`}>{r.occupancy.toFixed(1)}%</td>
-                            <td className="py-3 px-3 text-center text-slate-300">{r.asa.toFixed(0)}s</td>
-                            <td className={`py-3 px-3 text-center font-medium ${r.costDelta > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                              {r.costDelta > 0 ? '+' : ''}{r.costDelta.toLocaleString()}
-                            </td>
-                            <td className="py-3 px-3 text-center">
-                              <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                r.riskLevel === 'Baixo' ? 'bg-[rgba(52,211,153,0.12)] text-[var(--color-accent-emerald)]' :
-                                r.riskLevel === 'Médio' ? 'bg-[rgba(251,191,36,0.12)] text-[var(--color-accent-amber)]' :
-                                r.riskLevel === 'Alto' ? 'bg-[rgba(251,146,60,0.12)] text-[var(--color-accent-orange)]' :
-                                'bg-[rgba(251,113,133,0.12)] text-[var(--color-accent-rose)]'
-                              }`}>{r.riskLevel}</span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* What-If Visualization */}
-                  <div className="mt-6 bg-[var(--color-bg-surface)] rounded-xl p-6">
-                    <h3 className="text-lg font-bold text-cyan-400 mb-4">Comparativo Visual</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={whatifResults.map(r => ({ name: r.name, agentes: r.requiredAgents, sla: r.sla, ocupacao: r.occupancy }))}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                        <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 10 }} angle={-30} textAnchor="end" height={80} />
-                        <YAxis tick={{ fill: '#94a3b8' }} />
-                        <RechartsTooltip contentStyle={{ backgroundColor: 'var(--color-bg-elevated)', border: '1px solid var(--color-border-subtle)', borderRadius: '10px', color: 'var(--color-text-primary)' }} />
-                        <Legend />
-                        <Bar dataKey="agentes" fill="#818cf8" name="PA Necessários" />
-                        <Bar dataKey="sla" fill="#34d399" name="SLA %" />
-                        <Bar dataKey="ocupacao" fill="#fbbf24" name="Ocupação %" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-
-                  <button onClick={() => exportToCSV(whatifResults.map(r => ({
-                    Cenário: r.name, Volume: r.volume, TMO: r.tmo, Erlangs: r.erlangs,
-                    'PA Base': r.baseAgents, 'PA c/ Shrinkage': r.requiredAgents,
-                    'SLA (%)': r.sla, 'Ocupação (%)': r.occupancy, 'ASA (s)': r.asa,
-                    'Delta Custo': r.costDelta, Risco: r.riskLevel
-                  })), 'whatif_analysis.csv')}
-                    className="mt-4 btn-ghost px-4 py-2 text-sm">
-                    Exportar Análise CSV
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* ==================== ROTATION TAB ==================== */}
         {activeTab === 'rotacao' && (
