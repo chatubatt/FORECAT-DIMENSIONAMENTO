@@ -975,21 +975,64 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       const lbl = byDay[dmmWeekday].map(d => d.intervalo);
       baseSchedules.weekday = calculateShifts(req, lbl, dimEnabledShifts, opDays, wMin, wMax, maxPALimit, weekdayVol > 0 ? forcedEntries : []);
     }
-    if (dmmSat) {
+    // FDS: distribuir 6x1 proporcional ao peso do tráfego de Sábado + Domingo
+    if (dmmSat && dmmSun) {
       const satVol = byDay[dmmSat].reduce((s, d) => s + d.volume, 0);
-      const req = byDay[dmmSat].map(d => d.requiredAgents);
-      const lbl = byDay[dmmSat].map(d => d.intervalo);
-      const w = getShiftWindowIndices(lbl, dimOpHours.saturdays.start, dimOpHours.saturdays.end);
-      const satShifts = dimEnabledShifts.filter(s => s !== '08:12' && s !== '05:15');
-      baseSchedules.saturday = calculateShifts(req, lbl, satShifts, opDays, w.minStart, w.maxStart, maxPALimit, satVol > 0 ? forcedEntries : []);
-    }
-    if (dmmSun) {
       const sunVol = byDay[dmmSun].reduce((s, d) => s + d.volume, 0);
-      const req = byDay[dmmSun].map(d => d.requiredAgents);
-      const lbl = byDay[dmmSun].map(d => d.intervalo);
-      const w = getShiftWindowIndices(lbl, dimOpHours.sundays.start, dimOpHours.sundays.end);
-      const sunShifts = dimEnabledShifts.filter(s => s !== '08:12' && s !== '05:15');
-      baseSchedules.sunday = calculateShifts(req, lbl, sunShifts, opDays, w.minStart, w.maxStart, maxPALimit, sunVol > 0 ? forcedEntries : []);
+      const weekendVol = satVol + sunVol;
+      const satProp = weekendVol > 0 ? satVol / weekendVol : 0.5;
+      // Agregar demanda do FDS (max element-wise entre Sáb e Dom)
+      const satReq = byDay[dmmSat].map(d => d.requiredAgents);
+      const sunReq = byDay[dmmSun].map(d => d.requiredAgents);
+      const maxLen = Math.max(satReq.length, sunReq.length);
+      const weekendReq = Array.from({ length: maxLen }, (_, i) =>
+        Math.max(satReq[i] || 0, sunReq[i] || 0)
+      );
+      const weekendLabels = Array.from({ length: maxLen }, (_, i) =>
+        (byDay[dmmSat][i]?.intervalo || byDay[dmmSun][i]?.intervalo)
+      );
+
+      // Janela operacional combinada (considerar o mais amplo dos dois dias)
+      const sw = getShiftWindowIndices(weekendLabels, dimOpHours.saturdays.start, dimOpHours.saturdays.end);
+      const suw = getShiftWindowIndices(weekendLabels, dimOpHours.sundays.start, dimOpHours.sundays.end);
+      const wMinFds = Math.min(sw.minStart, suw.minStart);
+      const wMaxFds = Math.max(sw.maxStart, suw.maxStart);
+
+      const weekendShifts = dimEnabledShifts.filter(s => s !== '08:12' && s !== '05:15');
+      const weekendSchedule = calculateShifts(weekendReq, weekendLabels, weekendShifts, opDays, wMinFds, wMaxFds, maxPALimit, weekendVol > 0 ? forcedEntries : []);
+
+      const total6x1 = weekendSchedule.hcPerShiftType['06:20'] || 0;
+      const sat6x1 = Math.round(total6x1 * satProp);
+      const sun6x1 = total6x1 - sat6x1;
+
+      baseSchedules.saturday = {
+        ...weekendSchedule,
+        hcPerShiftType: { ...weekendSchedule.hcPerShiftType, '06:20': sat6x1 },
+        totalDailyHC: weekendSchedule.totalDailyHC - total6x1 + sat6x1,
+      };
+      baseSchedules.sunday = {
+        ...weekendSchedule,
+        hcPerShiftType: { ...weekendSchedule.hcPerShiftType, '06:20': sun6x1 },
+        totalDailyHC: weekendSchedule.totalDailyHC - total6x1 + sun6x1,
+      };
+    } else {
+      // Fallback: calcular cada dia individualmente se apenas um dos DMMs existir
+      if (dmmSat) {
+        const satVol = byDay[dmmSat].reduce((s, d) => s + d.volume, 0);
+        const req = byDay[dmmSat].map(d => d.requiredAgents);
+        const lbl = byDay[dmmSat].map(d => d.intervalo);
+        const w = getShiftWindowIndices(lbl, dimOpHours.saturdays.start, dimOpHours.saturdays.end);
+        const satShifts = dimEnabledShifts.filter(s => s !== '08:12' && s !== '05:15');
+        baseSchedules.saturday = calculateShifts(req, lbl, satShifts, opDays, w.minStart, w.maxStart, maxPALimit, satVol > 0 ? forcedEntries : []);
+      }
+      if (dmmSun) {
+        const sunVol = byDay[dmmSun].reduce((s, d) => s + d.volume, 0);
+        const req = byDay[dmmSun].map(d => d.requiredAgents);
+        const lbl = byDay[dmmSun].map(d => d.intervalo);
+        const w = getShiftWindowIndices(lbl, dimOpHours.sundays.start, dimOpHours.sundays.end);
+        const sunShifts = dimEnabledShifts.filter(s => s !== '08:12' && s !== '05:15');
+        baseSchedules.sunday = calculateShifts(req, lbl, sunShifts, opDays, w.minStart, w.maxStart, maxPALimit, sunVol > 0 ? forcedEntries : []);
+      }
     }
 
     const sampleLabels = dmmWeekdayLabels.length > 0 ? dmmWeekdayLabels : ['00:00'];
@@ -1458,7 +1501,16 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       const sundays = monthlyShiftSchedules.filter(r => new Date(r.data + 'T00:00:00').getDay() === 0).sort((a,b) => b.totalVol - a.totalVol);
       const dmmSatHC = saturdays[0]?.shiftRes?.totalDailyHC || 0;
       const dmmSunHC = sundays[0]?.shiftRes?.totalDailyHC || 0;
-      weekendMinDailyHC6x1 = Math.max(dmmSatHC, dmmSunHC);
+      const satVol = saturdays[0]?.totalVol || 0;
+      const sunVol = sundays[0]?.totalVol || 0;
+      // Distribuir 6x1 proporcional ao peso do tráfego de cada dia do FDS
+      if (satVol + sunVol > 0) {
+        const satProp = satVol / (satVol + sunVol);
+        const sunProp = sunVol / (satVol + sunVol);
+        weekendMinDailyHC6x1 = Math.round(dmmSatHC * satProp + dmmSunHC * sunProp);
+      } else {
+        weekendMinDailyHC6x1 = Math.max(dmmSatHC, dmmSunHC);
+      }
     }
 
     return compareShiftCombinations(required, labels, costPerAgent, overheadPercent, 7, cMin, cMax, maxPALimit, weekendMinDailyHC6x1);
