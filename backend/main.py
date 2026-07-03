@@ -16,7 +16,7 @@ from erlang import erlang_c, calc_sla, calc_asa, calc_occupancy, find_min_agents
 
 app = FastAPI(title="Forecast API", description="API para previsão de volume e TMO de call center")
 
-ALLOWED_ORIGINS = os.environ.get("CORS_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173").split(",")
+ALLOWED_ORIGINS = os.environ.get("CORS_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173,https://dimensionamentott.netlify.app").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
