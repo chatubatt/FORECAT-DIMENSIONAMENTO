@@ -4590,110 +4590,108 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                           Visão Consolidada
                         </label>
                       </div>
-                      <button onClick={exportMonthlyCSV} className="btn-ghost px-4 py-2 text-sm">📥 Exportar CSV Mensal</button>
+                      <button
+                        onClick={exportMonthlyCSV}
+                        className="btn-ghost px-4 py-2 text-sm"
+                      >
+                        📥 Exportar CSV Mensal
+                      </button>
                     </div>
-                    <div className="overflow-x-auto h-[400px]">
+                    <div className="overflow-x-auto h-[400px] ">
                       <table className="data-table">
                         <thead className="text-[11px] text-white bg-blue-900 sticky top-0 z-10 text-center font-bold">
                           <tr>
                             <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">DIA</th>
                             <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TIPO</th>
                             <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">DMM</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">% DMM</th>
                             <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">VOLUME</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TRÁFEGO</th>
                             <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TMO</th>
-                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">NS (Meta)</th>
-                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TRAF (K)</th>
-                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">% VOL</th>
-                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">% TMO</th>
-                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">CURVA</th>
-                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">Status</th>
-                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-yellow-300" colSpan={6}>INDISPONIBILIDADE</th>
-                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-emerald-300">PAS</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">NEC B</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">DIM B</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">GAP B</th>
+                            {AVAILABLE_SHIFTS.filter(s => dimEnabledShifts.includes(s.type)).map(s => (
+                              <th key={s.type} className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-yellow-300" title="Quadro Fixo Contratado">QUADRO {s.label.split(' ')[0]}</th>
+                            ))}
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">HE DIM</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-orange-300">NS</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-orange-300">NS C/ HE</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">PA LOG</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">PA LOG+HE</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TX OCUP</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">INDISP</th>
                             <th className="px-2 py-2">AD. NOT</th>
-                          </tr>
-                          <tr>
-                            <th colSpan={2}></th>
-                            <th></th>
-                            <th></th>
-                            <th></th>
-                            <th></th>
-                            <th></th>
-                            <th></th>
-                            <th></th>
-                            <th></th>
-                            <th></th>
-                            <th className="px-1.5 py-1 border-r border-[rgba(99,102,241,0.12)] text-[10px] text-amber-200">TOTAL</th>
-                            <th className="px-1.5 py-1 border-r border-[rgba(99,102,241,0.12)] text-[10px] text-amber-200">P.PESSOAL</th>
-                            <th className="px-1.5 py-1 border-r border-[rgba(99,102,241,0.12)] text-[10px] text-amber-200">ABS</th>
-                            <th className="px-1.5 py-1 border-r border-[rgba(99,102,241,0.12)] text-[10px] text-amber-200">TO</th>
-                            <th className="px-1.5 py-1 border-r border-[rgba(99,102,241,0.12)] text-[10px] text-amber-200">NR17</th>
-                            <th className="px-1.5 py-1 border-r border-[rgba(99,102,241,0.12)] text-[10px] text-amber-200">OUTROS</th>
-                            <th className="px-1.5 py-1 border-r border-[rgba(99,102,241,0.12)] text-[10px]"></th>
-                            <th></th>
                           </tr>
                         </thead>
                         <tbody className="text-center text-[11px]">
-                          {(dimShowConsolidated ? consolidatedSchedules : monthlyShiftSchedules).map((row, i) => {
-                            const trafK = (row.totalTraffic || 0) / 1000;
-                            const percTmo = monthlyShiftSchedules.reduce((s, r) => s + r.tmoAvg, 0) / (monthlyShiftSchedules.length || 1);
-                            const tmoVar = percTmo > 0 ? ((row.tmoAvg / percTmo) * 100) : 100;
-                            const dayNum = new Date(row.data + "T00:00:00").getDay();
-                            const curvaFor = dayNum === 0 ? 'DOM' : dayNum === 6 ? 'SAB' : 'SEG';
-                            const curvaDim = dayNum === 0 ? 'DOMINGO' : dayNum === 6 ? 'SABADO' : 'SEMANA';
-                            const shr = dimShrinkageConfig[dimEnabledShifts[0]] || { abs: 7, turnover: 4.37, nr17: 2, treinamento: 3, outros: 2.16 };
-                            return (
-                              <tr key={i} className={`border-b border-[rgba(255,255,255,0.05)] ${row.data === dimSelectedDay ? 'bg-blue-900/30 font-bold' : ''} ${row.isConsolidated ? 'bg-[var(--color-bg-elevated)] font-medium text-[12px]' : ''}`}>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] whitespace-nowrap">
-                                  {row.isConsolidated ? row.tipo : new Date(row.data + "T00:00:00").toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                          {(dimShowConsolidated ? consolidatedSchedules : monthlyShiftSchedules).map((row, i) => (
+                            <tr key={i} className={`border-b border-[rgba(255,255,255,0.05)] ${row.data === dimSelectedDay ? 'bg-blue-900/30 font-bold' : ''} ${row.isConsolidated ? 'bg-[var(--color-bg-elevated)] font-medium text-[12px]' : ''}`}>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] whitespace-nowrap">
+                                {row.isConsolidated ? row.tipo : new Date(row.data + "T00:00:00").toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                              </td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] lowercase">
+                                {row.isConsolidated ? '-' : new Date(row.data + "T00:00:00").toLocaleDateString('pt-BR', { weekday: 'short' })}
+                              </td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.dmmRank}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.percDmm?.toFixed(2)}%</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.totalVol}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-blue-400 font-medium">{Math.round(row.totalTraffic || 0).toLocaleString('pt-BR')}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.tmoAvg}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-slate-400">{row.maxPAs}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-slate-400">{row.avgPAs}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.avgPAs - row.maxPAs}</td>
+                              {AVAILABLE_SHIFTS.filter(s => dimEnabledShifts.includes(s.type)).map(s => (
+                                <td key={s.type} className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-semibold text-yellow-100">
+                                  {row.fixedHiredHC[s.type] || 0}
                                 </td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] lowercase">
-                                  {row.isConsolidated ? '-' : new Date(row.data + "T00:00:00").toLocaleDateString('pt-BR', { weekday: 'short' })}
-                                </td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.dmmRank}</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.totalVol}</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.tmoAvg}</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{(dimTargetSlaPercent * 100).toFixed(1)}%</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-blue-400 font-medium">{trafK.toFixed(1)}K</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{(row.percDmm || 0).toFixed(2)}%</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{tmoVar.toFixed(2)}%</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-xs">{curvaFor}/{curvaDim}</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold text-emerald-400">OK</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-amber-300 font-semibold">{dimShrinkage.toFixed(2)}%</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{(shr.abs + shr.treinamento).toFixed(2)}%</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{shr.abs.toFixed(2)}%</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{shr.turnover.toFixed(2)}%</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{shr.nr17.toFixed(2)}%</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{shr.outros.toFixed(2)}%</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold text-blue-300">{row.shiftRes?.coverage?.length > 0 ? Math.max(...row.shiftRes.coverage) : 0}</td>
-                                <td className="px-2 py-1">0,0%</td>
-                              </tr>
-                            );
-                          })}
+                              ))}
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">0</td>
+                              <td className={`px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold ${row.finalSla === null ? 'bg-slate-800 text-slate-500' : row.finalSla < dimTargetSlaPercent ? 'bg-red-500/20 text-red-400' : row.finalSla > 85 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                                {row.finalSla === null ? '-' : `${row.finalSla.toFixed(1)}%`}
+                              </td>
+                              <td className={`px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold ${row.finalSla === null ? 'bg-slate-800 text-slate-500' : row.finalSla < dimTargetSlaPercent ? 'bg-red-500/20 text-red-400' : row.finalSla > 85 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                                {row.finalSla === null ? '-' : `${row.finalSla.toFixed(1)}%`}
+                              </td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold text-blue-400">{row.shiftRes?.coverage?.length > 0 ? Math.max(...row.shiftRes.coverage) : 0}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold text-blue-400">{row.shiftRes?.coverage?.length > 0 ? Math.max(...row.shiftRes.coverage) : 0}</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.avgOccupancy}%</td>
+                              <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{dimShrinkage.toFixed(2)}%</td>
+                              <td className="px-2 py-1">0,0%</td>
+                            </tr>
+                          ))}
                         </tbody>
                         <tfoot className="bg-slate-700/80 font-bold border-t-2 border-blue-500">
                           <tr>
-                            <td colSpan={3} className="px-2 py-2 text-right border-r border-[rgba(99,102,241,0.12)]">TOTAL / MÉDIA</td>
+                            <td colSpan={4} className="px-2 py-2 text-right border-r border-[rgba(99,102,241,0.12)]">TOTAL / MÉDIA</td>
                             <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">{monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0)}</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-400">{Math.round(monthlyShiftSchedules.reduce((sum, r) => sum + r.totalTraffic, 0)).toLocaleString('pt-BR')}</td>
                             <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">
                               {monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0) > 0
                                 ? Math.round(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalVol * Number(r.tmoAvg)), 0) / monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0))
                                 : 0}
                             </td>
-                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-yellow-300">{(dimTargetSlaPercent * 100).toFixed(1)}%</td>
-                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-400">
-                              {(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalTraffic || 0), 0) / 1000).toFixed(1)}K
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-slate-300">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-slate-300">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
+                            {AVAILABLE_SHIFTS.filter(s => dimEnabledShifts.includes(s.type)).map(s => (
+                              <td key={s.type} className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-300">
+                                {Math.max(0, ...monthlyShiftSchedules.map(r => r.fixedHiredHC[s.type] || 0))}
+                              </td>
+                            ))}
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">0</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-yellow-300">
+                              {(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalVol * (r.finalSla || 0)), 0) / (monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0) || 1)).toFixed(1)}%
                             </td>
-                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">100%</td>
-                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">100%</td>
-                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
-                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
-                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-amber-300">{dimShrinkage.toFixed(2)}%</td>
-                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
-                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
-                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
-                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
-                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
-                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-300">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-yellow-300">
+                              {(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalVol * (r.finalSla || 0)), 0) / (monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0) || 1)).toFixed(1)}%
+                            </td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-400">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-400">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">
+                              {Math.round(monthlyShiftSchedules.reduce((sum, r) => sum + r.avgOccupancy, 0) / (monthlyShiftSchedules.length || 1))}%
+                            </td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">{dimShrinkage}%</td>
                             <td className="px-2 py-2">0,0%</td>
                           </tr>
                         </tfoot>
