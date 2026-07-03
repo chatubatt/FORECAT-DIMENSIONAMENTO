@@ -3,7 +3,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsToolti
 import { UploadCloud, Activity, Clock, CalendarDays, TrendingUp, Users } from 'lucide-react';
 import { evaluateErlangConfig, calculateStaffingStrategy, type OptimizedInterval, type SlaStrategy, type OperatingHoursConfig, calculateCostEstimate, calculateSLASensitivity, type SensitivityResult, calculateShrinkageBreakdown, exportToCSV } from './utils/erlang';
 
-import { calculateShifts, type ShiftType, AVAILABLE_SHIFTS, allocateShifts612_812, type ShiftAllocationResult, compareShiftCombinations, type ShiftCombinationCost, generateRotationCalendar, type RotationCalendar } from './utils/shifts';
+import { calculateShifts, type ShiftType, AVAILABLE_SHIFTS, type ShiftScheduleResult, compareShiftCombinations, type ShiftCombinationCost, generateRotationCalendar, type RotationCalendar } from './utils/shifts';
 
 interface IntervalForecast {
   intervalo: string;
@@ -250,6 +250,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
 
   const [dimEnabledShifts, setDimEnabledShifts] = useState<ShiftType[]>(['06:20', '08:12', '05:15']);
+  const [autoAllocMode, setAutoAllocMode] = useState<ShiftType[]>(['06:20', '08:12']);
 
   // Calcula a média do shrinkage total para os turnos habilitados (usado na estimativa inicial)
   const dimShrinkage = useMemo(() => {
@@ -1424,32 +1425,27 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     return result;
   }, [erlangData, dimEnabledShifts, dimStrategy, monthlyShiftSchedules, dimSelectedDay, monthComparisons, monthForecastData, dimOpHours, dimFixedAgents]);
 
-  // ---- Alocação Automática 06:20 | 08:12 ----
-  const shiftAllocation612_812 = useMemo((): ShiftAllocationResult | null => {
-    if (erlangData.length === 0) return null;
-
+  // ---- Alocação Automática por modo (06:20 / 08:12 / Ambos / 05:15) ----
+  const autoAllocSchedule = useMemo((): { result: ShiftScheduleResult | null; weekendBlocked: boolean; blockedShiftTypes: string[] } => {
+    if (erlangData.length === 0) return { result: null, weekendBlocked: false, blockedShiftTypes: [] };
     const required = erlangData.map(d => d.requiredAgents);
     const labels = erlangData.map(d => d.intervalo);
-
-    // Determinar janela de operação do dia selecionado
     const targetDate = dimSelectedDay || monthComparisons?.dmm_data || monthForecastData[0]?.data || '';
     const d = targetDate ? new Date(targetDate + 'T00:00:00') : new Date();
     const dow = d.getDay();
     let opCfg = dimOpHours.weekdays;
     if (dow === 0) opCfg = dimOpHours.sundays;
     else if (dow === 6) opCfg = dimOpHours.saturdays;
-
-    if (opCfg.closed) return null;
-
-    // Restringir janela de início de turnos: 06:00 a 17:40
+    if (opCfg.closed) return { result: null, weekendBlocked: false, blockedShiftTypes: [] };
     const { minStart, maxStart } = getShiftWindowIndices(labels, opCfg.start, opCfg.end);
-    const effectiveStart = labels[minStart] || '06:00';
-    const effectiveEnd = labels[Math.min(maxStart + 1, labels.length - 1)] || '17:50';
-    if (effectiveStart >= effectiveEnd) return null;
-
     const maxPALimit = dimFixedAgents === '' ? Infinity : Number(dimFixedAgents);
-    return allocateShifts612_812(required, labels, effectiveStart, effectiveEnd, maxPALimit);
-  }, [erlangData, dimOpHours, dimSelectedDay, monthComparisons, monthForecastData, dimFixedAgents]);
+    const isWeekend = dow === 0 || dow === 6;
+    const blockedShifts = isWeekend ? autoAllocMode.filter(t => t === '08:12') : [];
+    const mode = isWeekend ? autoAllocMode.filter(t => t !== '08:12') : autoAllocMode;
+    if (mode.length === 0) return { result: null, weekendBlocked: true, blockedShiftTypes: blockedShifts };
+    const result = calculateShifts(required, labels, mode, 7, minStart, maxStart, maxPALimit);
+    return { result, weekendBlocked: false, blockedShiftTypes: [] };
+  }, [erlangData, dimOpHours, dimSelectedDay, monthComparisons, monthForecastData, dimFixedAgents, autoAllocMode]);
 
   // WFM Cost Estimate
   const wfmCostEstimate = useMemo(() => {
@@ -4833,22 +4829,40 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                   ====================================================== */}
             {dimSubTab === 'alocacao_automatica' && (
               <div className="space-y-5">
-                {/* Controles */}
+                {/* Seletor de Modo */}
                 <div className="bg-slate-800 rounded-xl p-6 shadow-xl border border-emerald-500/20">
                   <h3 className="text-lg font-semibold text-emerald-400 mb-4 flex items-center gap-2">
-                    ⚙️ Configuração da Alocação
+                    ⚡ Alocação Automática
                   </h3>
-                  <div className="grid grid-cols-1 gap-4">
-                    <div className="flex items-end">
-                      <div className="bg-[var(--color-bg-surface)]/60 rounded p-3 text-xs text-slate-400 leading-relaxed">
-                        <p>📌 <strong className="text-slate-300">Janela de operação:</strong> usada do horário configurado no painel.</p>
-                        <p>📌 <strong className="text-slate-300">NEC base:</strong> <code className="text-emerald-400">requiredAgents</code> do Erlang C (com shrinkage).</p>
-                      </div>
-                    </div>
+                  <div className="flex flex-wrap gap-3">
+                    {[
+                      { label: '06:20 (6x1)', shifts: ['06:20'] as ShiftType[], color: 'blue', desc: 'Cobre FDS' },
+                      { label: '08:12 (5x2)', shifts: ['08:12'] as ShiftType[], color: 'purple', desc: 'Só dias úteis' },
+                      { label: '06:20 + 08:12', shifts: ['06:20', '08:12'] as ShiftType[], color: 'emerald', desc: 'Melhor cobertura' },
+                      { label: '05:15 (JA)', shifts: ['05:15'] as ShiftType[], color: 'amber', desc: 'Jornada Alternativa' },
+                    ].map(opt => (
+                      <button
+                        key={opt.label}
+                        onClick={() => setAutoAllocMode(opt.shifts)}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all border ${
+                          JSON.stringify(autoAllocMode) === JSON.stringify(opt.shifts)
+                            ? `bg-${opt.color}-500/20 border-${opt.color}-500/50 text-${opt.color}-300`
+                            : 'bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <span className="block">{opt.label}</span>
+                        <span className="block text-[10px] opacity-60 font-normal">{opt.desc}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                {!shiftAllocation612_812 ? (
+                {autoAllocSchedule.weekendBlocked ? (
+                  <div className="bg-rose-900/20 rounded-xl p-10 text-center text-rose-400 border border-rose-500/20">
+                    <p className="text-lg font-semibold mb-2">⛔ {autoAllocSchedule.blockedShiftTypes.join(', ')} não trabalha em finais de semana</p>
+                    <p className="text-sm text-slate-400">Selecione 06:20 (6x1) ou 05:15 (JA) para cobrir o FDS.</p>
+                  </div>
+                ) : !autoAllocSchedule.result ? (
                   <div className="bg-slate-800 rounded-xl p-10 text-center text-slate-400 border border-[rgba(99,102,241,0.08)]">
                     {erlangData.length === 0
                       ? '⚠️ Carregue o forecast e acesse a aba Dimensionamento para calcular.'
@@ -4859,45 +4873,68 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                     {/* KPIs */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="bg-gradient-to-br from-emerald-900/40 to-slate-800 rounded-xl p-5 border border-emerald-500/20 shadow-lg">
-                        <p className="text-slate-400 text-xs mb-1 uppercase tracking-wide">Total HC</p>
-                        <p className="text-3xl font-bold text-emerald-400">{shiftAllocation612_812.totalHC}</p>
+                        <p className="text-slate-400 text-xs mb-1 uppercase tracking-wide">HC Diário</p>
+                        <p className="text-3xl font-bold text-emerald-400">{autoAllocSchedule.result.totalDailyHC}</p>
                         <p className="text-slate-500 text-xs mt-1">operadores únicos</p>
                       </div>
                       <div className="bg-gradient-to-br from-blue-900/40 to-slate-800 rounded-xl p-5 border border-blue-500/20 shadow-lg">
-                        <p className="text-slate-400 text-xs mb-1 uppercase tracking-wide">Turnos 06:20</p>
-                        <p className="text-3xl font-bold text-blue-400">{shiftAllocation612_812.total_0620}</p>
-                        <p className="text-slate-500 text-xs mt-1">6h20 (6x1)</p>
-                      </div>
-                      <div className="bg-gradient-to-br from-purple-900/40 to-slate-800 rounded-xl p-5 border border-purple-500/20 shadow-lg">
-                        <p className="text-slate-400 text-xs mb-1 uppercase tracking-wide">Turnos 08:12</p>
-                        <p className="text-3xl font-bold text-purple-400">{shiftAllocation612_812.total_0812}</p>
-                        <p className="text-slate-500 text-xs mt-1">8h12 (5x2)</p>
+                        <p className="text-slate-400 text-xs mb-1 uppercase tracking-wide">HC Mensal</p>
+                        <p className="text-3xl font-bold text-blue-400">{autoAllocSchedule.result.totalMonthlyHC}</p>
+                        <p className="text-slate-500 text-xs mt-1">com folgas</p>
                       </div>
                       <div className="bg-gradient-to-br from-amber-900/40 to-slate-800 rounded-xl p-5 border border-amber-500/20 shadow-lg">
                         <p className="text-slate-400 text-xs mb-1 uppercase tracking-wide">Pico Coberto</p>
-                        <p className={`text-3xl font-bold ${shiftAllocation612_812.peakCoverage >= shiftAllocation612_812.peakNec ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {shiftAllocation612_812.peakCoverage}
+                        <p className={`text-3xl font-bold ${Math.max(...autoAllocSchedule.result.coverage) >= Math.max(...erlangData.map(d => d.requiredAgents)) ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {Math.max(...autoAllocSchedule.result.coverage)}
                         </p>
-                        <p className="text-slate-500 text-xs mt-1">NEC pico: {shiftAllocation612_812.peakNec}</p>
+                        <p className="text-slate-500 text-xs mt-1">NEC pico: {Math.max(...erlangData.map(d => d.requiredAgents))}</p>
+                      </div>
+                      <div className="bg-gradient-to-br from-violet-900/40 to-slate-800 rounded-xl p-5 border border-violet-500/20 shadow-lg">
+                        <p className="text-slate-400 text-xs mb-1 uppercase tracking-wide">Eficiência</p>
+                        <p className="text-3xl font-bold text-violet-400">{autoAllocSchedule.result.efficiency.toFixed(1)}%</p>
+                        <p className="text-slate-500 text-xs mt-1">aproveitamento</p>
                       </div>
                     </div>
 
+                    {/* Breakdown por turno */}
+                    {autoAllocMode.length > 1 && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {autoAllocMode.map(shiftType => {
+                          const shiftLabel = AVAILABLE_SHIFTS.find(s => s.type === shiftType)?.label || shiftType;
+                          const hc = autoAllocSchedule.result!.hcPerShiftType[shiftType] || 0;
+                          const colorMap: Record<string, { from: string; border: string; text: string }> = {
+                            '06:20': { from: '#1e3a5f', border: '#3b82f6', text: '#60a5fa' },
+                            '08:12': { from: '#3b1f6e', border: '#a855f7', text: '#c084fc' },
+                            '05:15': { from: '#5c3d1a', border: '#f59e0b', text: '#fbbf24' },
+                          };
+                          const cc = colorMap[shiftType] || { from: '#1e293b', border: '#64748b', text: '#cbd5e1' };
+                          return (
+                            <div key={shiftType} className="rounded-xl p-5 shadow-lg" style={{ background: `linear-gradient(135deg, ${cc.from}66, #1e293b)`, border: `1px solid ${cc.border}33` }}>
+                              <p className="text-slate-400 text-xs mb-1 uppercase tracking-wide">{shiftLabel}</p>
+                              <p className="text-3xl font-bold" style={{ color: cc.text }}>{hc}</p>
+                              <p className="text-slate-500 text-xs mt-1">agentes</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     {/* Gráfico NEC vs Cobertura */}
                     <div className="glass p-6">
-                      <h3 className="text-base font-semibold text-slate-300 mb-4">📈 NEC Bruta vs Cobertura por Intervalo</h3>
+                      <h3 className="text-base font-semibold text-slate-300 mb-4">📈 NEC vs Cobertura por Intervalo</h3>
                       <ResponsiveContainer width="100%" height={240}>
-                        <ComposedChart data={shiftAllocation612_812.necPerInterval.map((nec, i) => ({
-                          intervalo: erlangData[i]?.intervalo || i,
-                          nec,
-                          cobertura: shiftAllocation612_812.coveragePerInterval[i] || 0,
-                          gap: Math.max(0, nec - (shiftAllocation612_812.coveragePerInterval[i] || 0))
+                        <ComposedChart data={erlangData.map((d, i) => ({
+                          intervalo: d.intervalo,
+                          nec: d.requiredAgents,
+                          cobertura: autoAllocSchedule.result?.coverage[i] || 0,
+                          gap: Math.max(0, d.requiredAgents - (autoAllocSchedule.result?.coverage[i] || 0))
                         }))}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                           <XAxis dataKey="intervalo" stroke="#94a3b8" fontSize={10} interval={5} tickMargin={6} />
                           <YAxis stroke="#94a3b8" fontSize={11} />
                           <RechartsTooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '0.5rem' }} />
                           <Legend />
-                          <Bar dataKey="nec" name="NEC Bruta" fill="#f59e0b" opacity={0.7} radius={[2, 2, 0, 0]} />
+                          <Bar dataKey="nec" name="NEC" fill="#f59e0b" opacity={0.7} radius={[2, 2, 0, 0]} />
                           <Bar dataKey="cobertura" name="Cobertura" fill="#10b981" opacity={0.85} radius={[2, 2, 0, 0]} />
                           <Bar dataKey="gap" name="Déficit" fill="#ef4444" opacity={0.6} radius={[2, 2, 0, 0]} />
                         </ComposedChart>
@@ -4906,7 +4943,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
                     {/* Tabela de Escala */}
                     <div className="glass p-6">
-                      <h3 className="text-base font-semibold text-slate-300 mb-4">📋 Escala Gerada pelo Algoritmo Guloso</h3>
+                      <h3 className="text-base font-semibold text-slate-300 mb-4">📋 Escala Gerada</h3>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse text-sm">
                           <thead>
@@ -4915,34 +4952,49 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                               <th className="py-2 px-4">Saída</th>
                               <th className="py-2 px-4">Tipo</th>
                               <th className="py-2 px-4">Duração</th>
-                              <th className="py-2 px-4 text-center">Qtd Agentes</th>
-                              <th className="py-2 px-4 text-center">Horas-Operador</th>
+                              <th className="py-2 px-4 text-center">Qtd</th>
+                              <th className="py-2 px-4 text-center">Horas-Op</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {shiftAllocation612_812.allocations.map((alloc, idx) => (
-                              <tr key={idx} className={`border-b border-[rgba(99,102,241,0.12)]/40 hover:bg-slate-700/20 transition-colors ${alloc.shiftType === '08:12' ? 'bg-purple-900/10' : 'bg-blue-900/10'}`}>
-                                <td className="py-3 px-4 font-mono font-semibold text-white">{alloc.startTime}</td>
-                                <td className="py-3 px-4 font-mono text-slate-300">{alloc.endTime}</td>
-                                <td className="py-3 px-4">
-                                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${alloc.shiftType === '08:12' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'}`}>
-                                    {alloc.shiftType}
-                                  </span>
-                                </td>
-                                <td className="py-3 px-4 text-slate-400">{alloc.durationMinutes}min</td>
-                                <td className="py-3 px-4 text-center font-bold text-emerald-400">{alloc.count}</td>
-                                <td className="py-3 px-4 text-center text-amber-400 font-semibold">
-                                  {(alloc.count * alloc.durationMinutes / 60).toFixed(1)}h
-                                </td>
-                              </tr>
-                            ))}
+                            {autoAllocSchedule.result.schedules.map((sched, idx) => {
+                              const startH = parseInt(sched.startTime.split(':')[0]);
+                              const startM = parseInt(sched.startTime.split(':')[1]);
+                              const totalMinutes = startH * 60 + startM + sched.shift.durationMinutes;
+                              const endH = Math.floor(totalMinutes / 60) % 24;
+                              const endM = totalMinutes % 60;
+                              const endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+                              const badgeColor: Record<string, { bg: string; text: string }> = {
+                                '06:20': { bg: '#1e3a5f', text: '#93c5fd' },
+                                '08:12': { bg: '#3b1f6e', text: '#c084fc' },
+                                '05:15': { bg: '#5c3d1a', text: '#fbbf24' },
+                              };
+                              const bc = badgeColor[sched.shift.type] || { bg: '#1e293b', text: '#cbd5e1' };
+                              const rowBg = sched.shift.type === '06:20' ? 'rgba(30, 58, 95, 0.15)' : sched.shift.type === '08:12' ? 'rgba(59, 31, 110, 0.15)' : sched.shift.type === '05:15' ? 'rgba(92, 61, 26, 0.15)' : 'transparent';
+                              return (
+                                <tr key={idx} className="border-b border-[rgba(99,102,241,0.12)]/40 hover:bg-slate-700/20 transition-colors" style={{ background: rowBg }}>
+                                  <td className="py-3 px-4 font-mono font-semibold text-white">{sched.startTime}</td>
+                                  <td className="py-3 px-4 font-mono text-slate-300">{endTime}</td>
+                                  <td className="py-3 px-4">
+                                    <span className="px-2 py-0.5 rounded text-xs font-bold" style={{ background: bc.bg, color: bc.text }}>
+                                      {sched.shift.type}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-4 text-slate-400">{sched.shift.durationMinutes}min</td>
+                                  <td className="py-3 px-4 text-center font-bold text-emerald-400">{sched.count}</td>
+                                  <td className="py-3 px-4 text-center text-amber-400 font-semibold">
+                                    {(sched.count * sched.shift.durationMinutes / 60).toFixed(1)}h
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                           <tfoot className="border-t-2 border-[rgba(99,102,241,0.12)]">
                             <tr className="font-bold text-sm">
                               <td className="py-3 px-4 text-slate-300" colSpan={4}>TOTAL</td>
-                              <td className="py-3 px-4 text-center text-emerald-400">{shiftAllocation612_812.totalHC}</td>
+                              <td className="py-3 px-4 text-center text-emerald-400">{autoAllocSchedule.result.totalDailyHC}</td>
                               <td className="py-3 px-4 text-center text-amber-400">
-                                {shiftAllocation612_812.allocations.reduce((sum, a) => sum + a.count * a.durationMinutes / 60, 0).toFixed(1)}h
+                                {autoAllocSchedule.result.schedules.reduce((sum, s) => sum + s.count * s.shift.durationMinutes / 60, 0).toFixed(1)}h
                               </td>
                             </tr>
                           </tfoot>
