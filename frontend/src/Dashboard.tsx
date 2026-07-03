@@ -239,6 +239,7 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   const [dimQuantidadeTelas, setDimQuantidadeTelas] = useState<number | ''>(''); // Quantidade de telas/posições
   const [dimSelectedDay, setDimSelectedDay] = useState<string>(''); // Data selecionada para o dimensionamento
   const [dimShowConsolidated, setDimShowConsolidated] = useState<boolean>(true);
+  const [coverageChartKey, setCoverageChartKey] = useState<number>(0);
 
   const [dimStrategy, setDimStrategy] = useState<SlaStrategy>('monthly_avg');
   const [dimOpHours, setDimOpHours] = useState<OperatingHoursConfig>({
@@ -4314,26 +4315,63 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                         );
                       })()}
 
-                      <div className="overflow-x-auto ">
-                        <table className="data-table">
-                          <thead className="">
+                      <div className="section-header mb-4 mt-6">
+                        <div className="section-icon text-emerald-400 bg-emerald-500/10"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg></div>
+                        <div>
+                          <h3 className="text-base text-emerald-400">Linha do Tempo de Alocação</h3>
+                          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Visualização sequencial dos turnos ao longo do dia</p>
+                        </div>
+                      </div>
+
+                      <div className="gantt-chart mb-6">
+                        {shiftSchedule.schedules.map((s: any, idx: number) => {
+                          const totalIntervals = shiftSchedule.coverage.length;
+                          const leftPct = (s.startIndex / totalIntervals) * 100;
+                          const widthPct = (s.shift.intervalsCovered / totalIntervals) * 100;
+                          const color = ['#818cf8', '#6366f1', '#4f46e5', '#a78bfa', '#7c3aed', '#6d28d9'][idx % 6];
+                          return (
+                            <div key={idx} className="gantt-row" style={{ animationDelay: `${idx * 0.08}s` }}>
+                              <span className="gantt-label">{s.startTime}</span>
+                              <span className="gantt-count">{s.count}</span>
+                              <div className="gantt-track">
+                                <div className="gantt-bar" style={{ left: `${leftPct}%`, width: `${widthPct}%`, background: `linear-gradient(90deg, ${color}DD, ${color}88)` }}>
+                                  <span className="gantt-bar-label">{s.shift.label} × {s.count}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div className="gantt-timeline">
+                          {[0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22].map(h => (
+                            <div key={h} className="gantt-tick" style={{ left: `${(h / 24) * 100}%` }}>
+                              {String(h).padStart(2, '0')}:00
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="mgt-table">
+                          <thead>
                             <tr>
-                              <th className="px-4 py-2 rounded-tl">Turno</th>
-                              <th className="px-4 py-2">Horário de Entrada</th>
-                              <th className="px-4 py-2 rounded-tr">Qtd de Pessoas</th>
+                              <th>Turno</th>
+                              <th>Horário de Entrada</th>
+                              <th>Duração</th>
+                              <th>Qtd de Pessoas</th>
                             </tr>
                           </thead>
                           <tbody>
                             {shiftSchedule.schedules.map((s: any, idx: number) => (
-                              <tr key={idx} className="border-b border-[rgba(99,102,241,0.08)] hover:bg-[var(--color-glass-hover)]">
-                                <td className="px-4 py-2 font-medium text-emerald-400">{s.shift.label}</td>
-                                <td className="px-4 py-2">{s.startTime}</td>
-                                <td className="px-4 py-2 text-white font-bold">{s.count}</td>
+                              <tr key={idx}>
+                                <td className="font-medium"><span className="text-emerald-400">{s.shift.label}</span></td>
+                                <td>{s.startTime}</td>
+                                <td className="text-[var(--color-text-muted)]">{s.shift.durationMinutes}min</td>
+                                <td><span className="font-bold text-white">{s.count}</span></td>
                               </tr>
                             ))}
                             {shiftSchedule.schedules.length === 0 && (
                               <tr>
-                                <td colSpan={3} className="px-4 py-4 text-center text-slate-500">Nenhum turno simulado para este dia</td>
+                                <td colSpan={4} className="text-center text-[var(--color-text-muted)] py-8">Nenhum turno simulado para este dia</td>
                               </tr>
                             )}
                           </tbody>
@@ -4344,22 +4382,54 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
                   {coverageChartData.length > 0 && (
                     <div className="glass p-6">
-                      <div className="section-header mb-6">
+                      <div className="gradient-defs">
+                        <svg aria-hidden="true">
+                          <defs>
+                            <linearGradient id="barGrad0" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#818cf8" stopOpacity="0.6"/><stop offset="100%" stopColor="#818cf8" stopOpacity="1"/></linearGradient>
+                            <linearGradient id="barGrad1" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#6366f1" stopOpacity="0.6"/><stop offset="100%" stopColor="#6366f1" stopOpacity="1"/></linearGradient>
+                            <linearGradient id="barGrad2" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#4f46e5" stopOpacity="0.6"/><stop offset="100%" stopColor="#4f46e5" stopOpacity="1"/></linearGradient>
+                            <linearGradient id="barGrad3" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#a78bfa" stopOpacity="0.6"/><stop offset="100%" stopColor="#a78bfa" stopOpacity="1"/></linearGradient>
+                            <linearGradient id="barGrad4" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#7c3aed" stopOpacity="0.6"/><stop offset="100%" stopColor="#7c3aed" stopOpacity="1"/></linearGradient>
+                            <linearGradient id="necGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#fbbf24" stopOpacity="0.1"/><stop offset="100%" stopColor="#fbbf24" stopOpacity="0.02"/></linearGradient>
+                          </defs>
+                        </svg>
+                      </div>
+                      <div className="section-header mb-4">
                         <div className="section-icon text-violet-400 bg-violet-500/10"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg></div>
                         <div>
                           <h3 className="text-base text-violet-400">Cobertura de Escala vs PAs Necessárias</h3>
                           <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Distribuição dos turnos alocados sobre a demanda Erlang</p>
                         </div>
+                        <button
+                          onClick={() => setCoverageChartKey(prev => prev + 1)}
+                          className="ml-auto text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] px-2.5 py-1 rounded-md border border-[var(--color-border-subtle)] hover:border-[var(--color-border-glow)] transition-all flex items-center gap-1.5"
+                          title="Replay animation"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                          Animação
+                        </button>
                       </div>
                       <div className="h-96">
                         <ResponsiveContainer width="100%" height="100%">
-                          <ComposedChart data={coverageChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                          <ComposedChart key={coverageChartKey} data={coverageChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,102,241,0.06)" vertical={false} />
                             <XAxis dataKey="intervalo" stroke="#5b6a8a" fontSize={11} tickMargin={8} axisLine={false} tickLine={false} />
                             <YAxis yAxisId="left" stroke="#5b6a8a" fontSize={11} axisLine={false} tickLine={false} />
                             <RechartsTooltip
-                              contentStyle={{ backgroundColor: '#121830', border: '1px solid rgba(99,102,241,0.15)', borderRadius: '10px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
-                              labelStyle={{ color: '#94a3b8', fontSize: 12, fontWeight: 600, marginBottom: 4 }}
+                              content={({ active, payload, label }) => {
+                                if (!active || !payload) return null;
+                                return (
+                                  <div style={{ background: '#121830', border: '1px solid rgba(99,102,241,0.15)', borderRadius: '10px', padding: '10px 14px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+                                    <p style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600, marginBottom: 6, borderBottom: '1px solid rgba(99,102,241,0.1)', paddingBottom: 6 }}>{label}</p>
+                                    {payload.map((p: any, i: number) => (
+                                      <p key={i} style={{ color: p.color, fontSize: 11, margin: '2px 0', display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                                        <span>{p.name}</span>
+                                        <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{p.value}</span>
+                                      </p>
+                                    ))}
+                                  </div>
+                                );
+                              }}
                             />
                             <Legend
                               wrapperStyle={{ fontSize: 12, paddingTop: 12 }}
@@ -4367,15 +4437,14 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                             />
                             {AVAILABLE_SHIFTS.map((shift: any, idx: number) => {
                               if (!dimEnabledShifts.includes(shift.type)) return null;
-                              const colors = ['#818cf8', '#6366f1', '#4f46e5', '#a78bfa', '#7c3aed', '#6d28d9', '#8b5cf6', '#c4b5fd', '#ddd6fe'];
-                              const color = colors[idx % colors.length];
+                              const gradIds = ['barGrad0', 'barGrad1', 'barGrad2', 'barGrad3', 'barGrad4'];
                               return (
-                                <Bar key={shift.type} yAxisId="left" dataKey={shift.type} name={`HC ${shift.label}`} stackId="1" fill={color} opacity={0.85} radius={[2, 2, 0, 0]} maxBarSize={12} />
+                                <Bar key={shift.type} yAxisId="left" dataKey={shift.type} name={`HC ${shift.label}`} stackId="1" fill={`url(#${gradIds[idx % gradIds.length]})`} radius={[3, 3, 0, 0]} maxBarSize={12} animationDuration={800} animationBegin={idx * 120} />
                               );
                             })}
-                            <Line yAxisId="left" type="stepAfter" dataKey="required" name="NEC (PAs Erlang)" stroke="#fbbf24" strokeWidth={2.5} dot={false} />
-                            <Line yAxisId="left" type="stepAfter" dataKey="satRequired" name="NEC Sábado" stroke="#a78bfa" strokeWidth={2} strokeDasharray="6 4" dot={false} />
-                            <Line yAxisId="left" type="stepAfter" dataKey="sunRequired" name="NEC Domingo" stroke="#fb7185" strokeWidth={2} strokeDasharray="6 4" dot={false} />
+                            <Line yAxisId="left" type="stepAfter" dataKey="required" name="NEC (PAs Erlang)" stroke="#fbbf24" strokeWidth={2.5} dot={false} animationDuration={1000} />
+                            <Line yAxisId="left" type="stepAfter" dataKey="satRequired" name="NEC Sábado" stroke="#a78bfa" strokeWidth={2} strokeDasharray="6 4" dot={false} animationDuration={1200} />
+                            <Line yAxisId="left" type="stepAfter" dataKey="sunRequired" name="NEC Domingo" stroke="#fb7185" strokeWidth={2} strokeDasharray="6 4" dot={false} animationDuration={1400} />
                           </ComposedChart>
                         </ResponsiveContainer>
                       </div>
