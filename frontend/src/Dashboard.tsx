@@ -261,6 +261,17 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     });
     return total / dimEnabledShifts.length;
   }, [dimShrinkageConfig, dimEnabledShifts]);
+
+  // Média do shrinkage NÃO-NR17 (ABS + Treinamento + Turnover + Outros) para os turnos habilitados
+  const nonNR17ShrinkageAvg = useMemo(() => {
+    if (dimEnabledShifts.length === 0) return 0;
+    let total = 0;
+    dimEnabledShifts.forEach(shiftType => {
+      const conf = dimShrinkageConfig[shiftType] || defaultShrinkage;
+      total += conf.abs + conf.treinamento + conf.turnover + conf.outros;
+    });
+    return total / dimEnabledShifts.length;
+  }, [dimShrinkageConfig, dimEnabledShifts]);
   const [staffingScenarios, setStaffingScenarios] = useState<SavedStaffingScenario[]>([]);
   const [dimSubTab, setDimSubTab] = useState<'escala' | 'alocacao_automatica'>('escala');
 
@@ -961,8 +972,8 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     // Pre-calculate shiftRes for these DMMs
     let baseSchedules: Record<string, any> = {};
     const forcedEntries = [
-      { time: '00:00', count: 4 },
-      { time: '17:40', count: 4 }
+      { time: '00:00', count: 2 },
+      { time: '17:40', count: 2 }
     ];
 
     // NOTA: requiredAgents do findMinAgents/evaluateErlangConfig já inclui shrinkage
@@ -1063,10 +1074,11 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
             const interval = (intervals as any[])[idx];
             if (interval.volume === 0 || interval.isClosed) continue;
             const scheduledAgents = baseRes.coverage[idx] || 0;
-            const netAgents = scheduledAgents * (1 - (dimShrinkage / 100));
+            const breakDeduction = baseRes.breakCountsPerInterval?.[idx] || 0;
+            const netAgents = (scheduledAgents - breakDeduction) * (1 - (nonNR17ShrinkageAvg / 100));
             const effectiveTmo = dimTma !== '' ? Number(dimTma) : interval.tmo;
             const traffic = ((interval.volume / numTelas) / intervalSeconds) * effectiveTmo;
-            const evalRes = evaluateErlangConfig(netAgents, traffic, effectiveTmo, dimTargetSlaTime, dimShrinkage / 100);
+            const evalRes = evaluateErlangConfig(netAgents, traffic, effectiveTmo, dimTargetSlaTime, 0);
 
             totalMonthVol += interval.volume;
             totalMonthVolOk += (evalRes.serviceLevel || 0) * interval.volume;
@@ -1089,16 +1101,19 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
           if (interval.volume === 0 || interval.isClosed) continue;
 
           let netAgents = 0;
+          const breakDeduction = baseRes.breakCountsPerInterval?.[idx] || 0;
           if (baseRes.activePerInterval && baseRes.activePerInterval[idx]) {
             const activeShifts = baseRes.activePerInterval[idx];
+            const totalActive = Object.values(activeShifts).reduce((s: number, v: any) => s + (v as number), 0);
             for (const [shiftType, count] of Object.entries(activeShifts)) {
               const conf = dimShrinkageConfig[shiftType] || defaultShrinkage;
-              const shiftShrinkage = Object.values(conf).reduce((sum, val) => sum + val, 0);
-              netAgents += (count as number) * (1 - (shiftShrinkage / 100));
+              const nonNR17 = conf.abs + conf.treinamento + conf.turnover + conf.outros;
+              const shiftBreak = totalActive > 0 ? breakDeduction * ((count as number) / totalActive) : 0;
+              netAgents += ((count as number) - shiftBreak) * (1 - (nonNR17 / 100));
             }
           } else {
             const scheduledAgents = baseRes.coverage[idx] || 0;
-            netAgents = scheduledAgents * (1 - (dimShrinkage / 100));
+            netAgents = (scheduledAgents - breakDeduction) * (1 - (nonNR17ShrinkageAvg / 100));
           }
 
           const effectiveTmo = dimTma !== '' ? Number(dimTma) : interval.tmo;
@@ -1212,16 +1227,19 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
         if (interval.volume === 0 || interval.isClosed) return interval;
 
         let netAgents = 0;
+        const breakDeduction = shiftRes.breakCountsPerInterval?.[idx] || 0;
         if (shiftRes.activePerInterval && shiftRes.activePerInterval[idx]) {
           const activeShifts = shiftRes.activePerInterval[idx];
+          const totalActive = Object.values(activeShifts).reduce((s: number, v: any) => s + (v as number), 0);
           for (const [shiftType, count] of Object.entries(activeShifts)) {
             const conf = dimShrinkageConfig[shiftType] || defaultShrinkage;
-            const shiftShrinkage = Object.values(conf).reduce((sum, val) => sum + val, 0);
-            netAgents += (count as number) * (1 - (shiftShrinkage / 100));
+            const nonNR17 = conf.abs + conf.treinamento + conf.turnover + conf.outros;
+            const shiftBreak = totalActive > 0 ? breakDeduction * ((count as number) / totalActive) : 0;
+            netAgents += ((count as number) - shiftBreak) * (1 - (nonNR17 / 100));
           }
         } else {
           const scheduledAgents = shiftRes.coverage[idx] || 0;
-          netAgents = scheduledAgents * (1 - (dimShrinkage / 100));
+          netAgents = (scheduledAgents - breakDeduction) * (1 - (nonNR17ShrinkageAvg / 100));
         }
 
         const effectiveTmo = dimTma !== '' ? Number(dimTma) : interval.tmo;

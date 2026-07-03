@@ -42,6 +42,93 @@ export interface ShiftScheduleResult {
   understaffedIntervals: number; // intervals where coverage < required
   maxOverstaff: number;     // max excess agents in any interval
   totalWastedMinutes: number; // total minutes of overstaffing
+  breakCountsPerInterval: number[]; // agents on break at each interval (NR17)
+}
+
+// ===========================================================================
+// PAUSAS NR17 POR TIPO DE TURNO
+// ===========================================================================
+
+export interface BreakInfo {
+  totalBreakMinutes: number;
+  components: { label: string; minutes: number }[];
+  nr17ExcludedFirstMinutes: number;
+  nr17ExcludedLastMinutes: number;
+}
+
+const BREAK_SCHEDULES: Record<ShiftType, BreakInfo> = {
+  '06:20': {
+    totalBreakMinutes: 40,
+    components: [
+      { label: 'Descanso 1', minutes: 10 },
+      { label: 'Lanche', minutes: 20 },
+      { label: 'Descanso 2', minutes: 10 },
+    ],
+    nr17ExcludedFirstMinutes: 60,
+    nr17ExcludedLastMinutes: 60,
+  },
+  '08:12': {
+    totalBreakMinutes: 80,
+    components: [
+      { label: 'Descanso 1', minutes: 10 },
+      { label: 'Almoço', minutes: 60 },
+      { label: 'Descanso 2', minutes: 10 },
+    ],
+    nr17ExcludedFirstMinutes: 60,
+    nr17ExcludedLastMinutes: 60,
+  },
+  '05:15': {
+    totalBreakMinutes: 30,
+    components: [
+      { label: 'Pausa única', minutes: 30 },
+    ],
+    nr17ExcludedFirstMinutes: 60,
+    nr17ExcludedLastMinutes: 60,
+  },
+};
+
+export function getBreakInfo(shiftType: ShiftType): BreakInfo {
+  return BREAK_SCHEDULES[shiftType];
+}
+
+/**
+ * Para cada intervalo, calcula quantos agentes estão em pausa (NR17),
+ * respeitando a regra de não haver pausas na 1ª e última hora do turno.
+ *
+ * As pausas são distribuídas uniformemente pela janela disponível
+ * (1h após login até 1h antes do fim do turno).
+ */
+export function computeBreakCountsPerInterval(
+  schedules: ScheduledShift[],
+  numIntervals: number,
+  intervalMinutes: number = 10
+): number[] {
+  const breakCounts = new Array(numIntervals).fill(0);
+
+  for (const sched of schedules) {
+    const breakInfo = BREAK_SCHEDULES[sched.shift.type];
+    if (!breakInfo) continue;
+
+    const firstExcludedIntervals = Math.max(1, Math.ceil(breakInfo.nr17ExcludedFirstMinutes / intervalMinutes));
+    const lastExcludedIntervals = Math.max(1, Math.ceil(breakInfo.nr17ExcludedLastMinutes / intervalMinutes));
+    const totalBreakIntervals = Math.max(1, Math.ceil(breakInfo.totalBreakMinutes / intervalMinutes));
+    const availableIntervals = Math.max(1, sched.shift.intervalsCovered - firstExcludedIntervals - lastExcludedIntervals);
+    const breakFraction = totalBreakIntervals / availableIntervals;
+
+    for (let offset = 0; offset < sched.shift.intervalsCovered; offset++) {
+      const globalInterval = sched.startIndex + offset;
+      if (globalInterval < 0 || globalInterval >= numIntervals) continue;
+
+      // NR17: sem pausas na primeira hora
+      if (offset < firstExcludedIntervals) continue;
+      // NR17: sem pausas na última hora
+      if (offset >= sched.shift.intervalsCovered - lastExcludedIntervals) continue;
+
+      breakCounts[globalInterval] += sched.count * breakFraction;
+    }
+  }
+
+  return breakCounts;
 }
 
 // Helper para verificar se o horário de início (entrada) e o tipo de turno são permitidos.
@@ -113,7 +200,8 @@ export function calculateShifts(
       activePerInterval: [],
       coverage: [], costScore: 0,
       efficiency: 0, overstaffedIntervals: 0, understaffedIntervals: 0,
-      maxOverstaff: 0, totalWastedMinutes: 0
+      maxOverstaff: 0, totalWastedMinutes: 0,
+      breakCountsPerInterval: []
     };
   }
 
@@ -465,6 +553,9 @@ export function calculateShifts(
 
   const efficiency = totalRequired > 0 ? totalCoverage / totalRequired : 0;
 
+  // Calcular pausas NR17 por intervalo
+  const breakCountsPerInterval = computeBreakCountsPerInterval(schedules, numIntervals, intervalMinutes);
+
   return {
     schedules,
     totalDailyHC: totalDaily,
@@ -473,6 +564,7 @@ export function calculateShifts(
     entradasPerInterval,
     activePerInterval,
     coverage,
+    breakCountsPerInterval,
     costScore: 0,
     efficiency: Math.round(efficiency * 100) / 100,
     overstaffedIntervals,
