@@ -242,9 +242,9 @@ export function calculateShifts(
         let wasted = 0;
         let reduction = 0;
         for (let j = s; j < limit; j++) {
-          if (required[j] > 0) {
+          if (coverage[j] < required[j]) {
             useful++;
-            reduction += required[j];
+            reduction += (required[j] - coverage[j]);
           } else {
             wasted++;
           }
@@ -306,9 +306,9 @@ export function calculateShifts(
           let wasted = 0;
           let reduction = 0;
           for (let j = s; j < limit; j++) {
-            if (required[j] > 0) {
+            if (coverage[j] < required[j]) {
               useful++;
-              reduction += required[j];
+              reduction += (required[j] - coverage[j]);
             } else {
               wasted++;
             }
