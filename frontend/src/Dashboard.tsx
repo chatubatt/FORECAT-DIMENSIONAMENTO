@@ -239,10 +239,6 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
   const [dimQuantidadeTelas, setDimQuantidadeTelas] = useState<number | ''>(''); // Quantidade de telas/posições
   const [dimSelectedDay, setDimSelectedDay] = useState<string>(''); // Data selecionada para o dimensionamento
   const [dimShowConsolidated, setDimShowConsolidated] = useState<boolean>(true);
-  const [dimShowImported, setDimShowImported] = useState<boolean>(false);
-  const [showImportTextarea, setShowImportTextarea] = useState<boolean>(false);
-  const [importedTSV, setImportedTSV] = useState<string>('');
-  const [spreadsheetRows, setSpreadsheetRows] = useState<string[][]>([]);
   const [coverageChartKey, setCoverageChartKey] = useState<number>(0);
 
   const [dimStrategy, setDimStrategy] = useState<SlaStrategy>('monthly_avg');
@@ -1806,99 +1802,6 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `visao_mensal_escalas_${new Date().getTime()}.csv`;
-    link.click();
-  };
-
-  const SPREADSHEET_COLUMNS = [
-    { key: 'dia', label: 'DIA', idx: 0 },
-    { key: 'tipo', label: 'TIPO', idx: 1 },
-    { key: 'dmm', label: 'DMM', idx: 2 },
-    { key: 'volume', label: 'VOLUME', idx: 3 },
-    { key: 'tmo', label: 'TMO', idx: 4 },
-    { key: 'ns_meta', label: 'NS (Meta)', idx: 5 },
-    { key: 'time', label: 'Time', idx: 6 },
-    { key: 'traf_k', label: 'TRAF (K)', idx: 7 },
-    { key: 'perc_vol', label: '% VOL', idx: 8 },
-    { key: 'perc_tmo', label: '% TMO', idx: 9 },
-    { key: 'curva_for', label: 'CURVA FOR', idx: 10 },
-    { key: 'curva_dim', label: 'CURVA DIM', idx: 11 },
-    { key: 'status', label: 'Status', idx: 12 },
-    { key: 'indisp', label: 'INDISP', idx: 13 },
-    { key: 'over_c', label: 'OVER C.', idx: 20 },
-    { key: 'p_pessoal', label: 'P.PESSOAL', idx: 21 },
-    { key: 'abs', label: 'ABS', idx: 22 },
-    { key: 'to', label: 'TO', idx: 23 },
-    { key: 'nr17', label: 'NR17', idx: 24 },
-    { key: 'treina', label: 'TREINA.', idx: 25 },
-    { key: 'outros', label: 'OUTROS', idx: 26 },
-    { key: 'indisp_total', label: 'INDISP TOTAL', idx: 27 },
-    { key: 'indisp_consolidado', label: 'INDISP CONS.', idx: 29 },
-  ];
-
-  const SAMPLE_TSV = `DIA	TIPO	DMM	VOLUME	TMO	NS (Meta)	Time	TRAF (K)	% VOL	% TMO	CURVA_FOR	CURVA_DIM		INDISP.		INDISP.		INDISP.		OVER C.	P.PESSOAL	ABS	TO	NR17	TREINA.	OUTROS	INDISP.		INDISP.		PAS
-01/ago	sáb	25	591	396	95,0%	45	39	1,24%	94,26%	SÁB	SABADO	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-02/ago	dom	30	429	387	95,0%	45	28	0,90%	92,12%	DOM	DOMINGO	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-03/ago	seg	2	2.357	436	90,0%	90	171	4,94%	103,79%	SEG	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-04/ago	ter	6	2.187	429	95,0%	45	156	4,58%	102,06%	TER	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-05/ago	qua	10	2.025	438	95,0%	45	148	4,24%	104,27%	QUA	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-06/ago	qui	18	1.843	396	95,0%	45	122	3,86%	94,34%	QUI	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-07/ago	sex	15	1.931	411	95,0%	45	132	4,04%	97,95%	SEX	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-08/ago	sáb	23	632	397	95,0%	45	42	1,32%	94,59%	SÁB	SABADO	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-09/ago	dom	28	460	394	95,0%	45	30	0,96%	93,78%	DOM	DOMINGO	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-10/ago	seg	1	2.391	432	90,0%	90	172	5,01%	102,82%	SEG	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-11/ago	ter	7	2.171	426	95,0%	45	154	4,55%	101,44%	TER	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-12/ago	qua	8	2.117	437	95,0%	45	154	4,43%	104,02%	QUA	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-13/ago	qui	14	1.985	408	95,0%	45	135	4,16%	97,12%	QUI	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-14/ago	sex	17	1.810	425	95,0%	45	128	3,79%	101,14%	SEX	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-15/ago	sáb	24	615	396	95,0%	45	41	1,29%	94,40%	SÁB	SABADO	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-16/ago	dom	31	414	390	95,0%	45	27	0,87%	92,87%	DOM	DOMINGO	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-17/ago	seg	3	2.345	430	90,0%	90	168	4,91%	102,29%	SEG	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-18/ago	ter	9	2.087	428	95,0%	45	149	4,37%	101,85%	TER	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-19/ago	qua	16	1.830	427	95,0%	45	130	3,83%	101,74%	QUA	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-20/ago	qui	19	1.793	400	95,0%	45	119	3,75%	95,21%	QUI	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-21/ago	sex	13	1.882	438	95,0%	45	137	3,94%	104,27%	SEX	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-22/ago	sáb	22	638	395	95,0%	45	42	1,34%	94,11%	SÁB	SABADO	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-23/ago	dom	27	456	399	95,0%	45	30	0,96%	94,92%	DOM	DOMINGO	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-24/ago	seg	5	2.272	431	90,0%	90	163	4,76%	102,69%	SEG	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-25/ago	ter	11	2.079	414	95,0%	45	144	4,35%	98,68%	TER	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-26/ago	qua	12	1.964	425	95,0%	45	139	4,11%	101,08%	QUA	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-27/ago	qui	21	1.588	382	95,0%	45	101	3,32%	90,99%	QUI	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-28/ago	sex	20	1.600	407	95,0%	45	109	3,35%	96,92%	SEX	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-29/ago	sáb	26	546	405	95,0%	45	37	1,14%	96,36%	SÁB	SABADO	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-30/ago	dom	29	462	392	95,0%	45	30	0,97%	93,45%	DOM	DOMINGO	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%
-31/ago	seg	4	2.255	439	90,0%	90	165	4,72%	104,44%	SEG	SEMANA	OK	18,48%		0,00%		0,00%				10,00%		10,53%	2,00%		22,53%		0,00%		18,48%`;
-
-  const parseTSV = (text: string): string[][] => {
-    const lines = text.trim().split('\n');
-    return lines.slice(1).map(line => line.split('\t'));
-  };
-
-  const loadSampleData = () => {
-    setImportedTSV(SAMPLE_TSV);
-    const rows = parseTSV(SAMPLE_TSV);
-    setSpreadsheetRows(rows);
-    setDimShowImported(true);
-  };
-
-  const importFromTSV = () => {
-    if (!importedTSV.trim()) return;
-    const rows = parseTSV(importedTSV);
-    setSpreadsheetRows(rows);
-    setDimShowImported(true);
-    setShowImportTextarea(false);
-  };
-
-  const exportImportedCSV = () => {
-    if (spreadsheetRows.length === 0) return;
-    const headers = SPREADSHEET_COLUMNS.map(c => c.label);
-    const rows = spreadsheetRows.map(row => {
-      return SPREADSHEET_COLUMNS.map(c => row[c.idx] || '').join(';');
-    });
-    const csvContent = [headers.join(';'), ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `dados_planilha_${new Date().getTime()}.csv`;
     link.click();
   };
 
@@ -4675,128 +4578,70 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
 
                   <div className="glass p-6 mb-6">
                     <div className="flex justify-between items-center mb-4">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-4">
                         <h3 className="text-lg font-semibold">Visão Mensal de Escalas</h3>
-                        <div className="flex rounded-lg overflow-hidden border border-[rgba(99,102,241,0.15)] ml-4">
-                          <button
-                            onClick={() => setDimShowImported(false)}
-                            className={`px-3 py-1 text-xs font-medium transition-colors ${!dimShowImported ? 'bg-blue-600 text-white' : 'bg-transparent text-slate-400 hover:text-white'}`}
-                          >
-                            Modelo Erlang
-                          </button>
-                          <button
-                            onClick={() => setDimShowImported(true)}
-                            className={`px-3 py-1 text-xs font-medium transition-colors ${dimShowImported ? 'bg-blue-600 text-white' : 'bg-transparent text-slate-400 hover:text-white'}`}
-                          >
-                            Dados Planilha
-                          </button>
-                        </div>
-                        {!dimShowImported && (
-                          <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer btn-ghost px-3 py-1.5">
-                            <input
-                              type="checkbox"
-                              checked={dimShowConsolidated}
-                              onChange={e => setDimShowConsolidated(e.target.checked)}
-                              className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-blue-500 focus:ring-blue-500"
-                            />
-                            Visão Consolidada
-                          </label>
-                        )}
+                        <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer btn-ghost px-3 py-1.5">
+                          <input
+                            type="checkbox"
+                            checked={dimShowConsolidated}
+                            onChange={e => setDimShowConsolidated(e.target.checked)}
+                            className="rounded bg-[var(--color-bg-surface)] border-[rgba(99,102,241,0.12)] text-blue-500 focus:ring-blue-500"
+                          />
+                          Visão Consolidada
+                        </label>
                       </div>
-                      <div className="flex gap-2">
-                        {dimShowImported && spreadsheetRows.length > 0 && (
-                          <button onClick={exportImportedCSV} className="btn-ghost px-4 py-2 text-sm">📥 Exportar CSV</button>
-                        )}
-                        <button
-                          onClick={() => setShowImportTextarea(!showImportTextarea)}
-                          className="btn-ghost px-4 py-2 text-sm"
-                        >
-                          📂 Importar Planilha
-                        </button>
-                        {!dimShowImported && (
-                          <button onClick={exportMonthlyCSV} className="btn-ghost px-4 py-2 text-sm">📥 Exportar CSV Mensal</button>
-                        )}
-                      </div>
+                      <button onClick={exportMonthlyCSV} className="btn-ghost px-4 py-2 text-sm">📥 Exportar CSV Mensal</button>
                     </div>
-
-                    {showImportTextarea && (
-                      <div className="mb-4 p-4 bg-slate-800/50 rounded-lg border border-[rgba(99,102,241,0.12)]">
-                        <p className="text-xs text-slate-400 mb-2">Cole abaixo os dados copiados da planilha (separados por tab) e clique em "Importar":</p>
-                        <textarea
-                          value={importedTSV}
-                          onChange={e => setImportedTSV(e.target.value)}
-                          className="w-full h-32 bg-slate-900 border border-[rgba(99,102,241,0.12)] rounded-lg p-3 text-xs font-mono text-slate-300 resize-y"
-                          placeholder="Cole os dados da planilha aqui..."
-                        />
-                        <div className="flex gap-2 mt-2">
-                          <button onClick={importFromTSV} className="btn-primary px-4 py-2 text-xs">Importar</button>
-                          <button onClick={loadSampleData} className="btn-ghost px-4 py-2 text-xs">Carregar dados de exemplo (Agosto/2025)</button>
-                        </div>
-                      </div>
-                    )}
-
-                    {dimShowImported && spreadsheetRows.length > 0 ? (
-                      <div className="overflow-x-auto h-[400px]">
-                        <table className="data-table">
-                          <thead className="text-[11px] text-white bg-blue-900 sticky top-0 z-10 text-center font-bold">
-                            <tr>
-                              {SPREADSHEET_COLUMNS.map(col => (
-                                <th key={col.key} className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">{col.label}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody className="text-center text-[11px]">
-                            {spreadsheetRows.map((row, i) => (
-                              <tr key={i} className="border-b border-[rgba(255,255,255,0.05)] hover:bg-slate-700/20">
-                                {SPREADSHEET_COLUMNS.map(col => {
-                                  const val = row[col.idx] || '';
-                                  const isHighlight = col.key === 'indisp' || col.key === 'indisp_total' || col.key === 'indisp_consolidado';
-                                  return (
-                                    <td key={col.key} className={`px-2 py-1 border-r border-[rgba(255,255,255,0.05)] whitespace-nowrap ${isHighlight ? 'font-semibold text-amber-300' : ''} ${col.key === 'volume' || col.key === 'traf_k' ? 'text-blue-400 font-medium' : ''} ${col.key === 'tmo' ? 'text-slate-400' : ''} ${col.key === 'status' && val === 'OK' ? 'text-emerald-400 font-bold' : ''} ${col.key === 'status' && val !== 'OK' ? 'text-red-400 font-bold' : ''}`}>
-                                      {val || '-'}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : dimShowImported && spreadsheetRows.length === 0 ? (
-                      <div className="text-center py-12 text-slate-500">
-                        <p className="text-lg mb-2">Nenhum dado importado</p>
-                        <p className="text-sm">Clique em "📂 Importar Planilha" e cole os dados da sua planilha, ou carregue o exemplo.</p>
-                      </div>
-                    ) : (
-                      <div className="overflow-x-auto h-[400px]">
-                        <table className="data-table">
-                          <thead className="text-[11px] text-white bg-blue-900 sticky top-0 z-10 text-center font-bold">
-                            <tr>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">DIA</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TIPO</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">DMM</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">% DMM</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">VOLUME</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TRÁFEGO</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TMO</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">NEC B</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">DIM B</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">GAP B</th>
-                              {AVAILABLE_SHIFTS.filter(s => dimEnabledShifts.includes(s.type)).map(s => (
-                                <th key={s.type} className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-yellow-300" title="Quadro Fixo Contratado">QUADRO {s.label.split(' ')[0]}</th>
-                              ))}
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">HE DIM</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-orange-300">NS</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-orange-300">NS C/ HE</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">PA LOG</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">PA LOG+HE</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TX OCUP</th>
-                              <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">INDISP</th>
-                              <th className="px-2 py-2">AD. NOT</th>
-                            </tr>
-                          </thead>
-                          <tbody className="text-center text-[11px]">
-                            {(dimShowConsolidated ? consolidatedSchedules : monthlyShiftSchedules).map((row, i) => (
+                    <div className="overflow-x-auto h-[400px]">
+                      <table className="data-table">
+                        <thead className="text-[11px] text-white bg-blue-900 sticky top-0 z-10 text-center font-bold">
+                          <tr>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">DIA</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TIPO</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">DMM</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">VOLUME</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TMO</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">NS (Meta)</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">TRAF (K)</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">% VOL</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">% TMO</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">CURVA</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)]">Status</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-yellow-300" colSpan={6}>INDISPONIBILIDADE</th>
+                            <th className="px-2 py-2 border-r border-[rgba(99,102,241,0.15)] text-emerald-300">PAS</th>
+                            <th className="px-2 py-2">AD. NOT</th>
+                          </tr>
+                          <tr>
+                            <th colSpan={2}></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th className="px-1.5 py-1 border-r border-[rgba(99,102,241,0.12)] text-[10px] text-amber-200">TOTAL</th>
+                            <th className="px-1.5 py-1 border-r border-[rgba(99,102,241,0.12)] text-[10px] text-amber-200">P.PESSOAL</th>
+                            <th className="px-1.5 py-1 border-r border-[rgba(99,102,241,0.12)] text-[10px] text-amber-200">ABS</th>
+                            <th className="px-1.5 py-1 border-r border-[rgba(99,102,241,0.12)] text-[10px] text-amber-200">TO</th>
+                            <th className="px-1.5 py-1 border-r border-[rgba(99,102,241,0.12)] text-[10px] text-amber-200">NR17</th>
+                            <th className="px-1.5 py-1 border-r border-[rgba(99,102,241,0.12)] text-[10px] text-amber-200">OUTROS</th>
+                            <th className="px-1.5 py-1 border-r border-[rgba(99,102,241,0.12)] text-[10px]"></th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody className="text-center text-[11px]">
+                          {(dimShowConsolidated ? consolidatedSchedules : monthlyShiftSchedules).map((row, i) => {
+                            const trafK = (row.totalTraffic || 0) / 1000;
+                            const percTmo = monthlyShiftSchedules.reduce((s, r) => s + r.tmoAvg, 0) / (monthlyShiftSchedules.length || 1);
+                            const tmoVar = percTmo > 0 ? ((row.tmoAvg / percTmo) * 100) : 100;
+                            const dayNum = new Date(row.data + "T00:00:00").getDay();
+                            const curvaFor = dayNum === 0 ? 'DOM' : dayNum === 6 ? 'SAB' : 'SEG';
+                            const curvaDim = dayNum === 0 ? 'DOMINGO' : dayNum === 6 ? 'SABADO' : 'SEMANA';
+                            const shr = dimShrinkageConfig[dimEnabledShifts[0]] || { abs: 7, turnover: 4.37, nr17: 2, treinamento: 3, outros: 2.16 };
+                            return (
                               <tr key={i} className={`border-b border-[rgba(255,255,255,0.05)] ${row.data === dimSelectedDay ? 'bg-blue-900/30 font-bold' : ''} ${row.isConsolidated ? 'bg-[var(--color-bg-elevated)] font-medium text-[12px]' : ''}`}>
                                 <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] whitespace-nowrap">
                                   {row.isConsolidated ? row.tipo : new Date(row.data + "T00:00:00").toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
@@ -4805,70 +4650,55 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
                                   {row.isConsolidated ? '-' : new Date(row.data + "T00:00:00").toLocaleDateString('pt-BR', { weekday: 'short' })}
                                 </td>
                                 <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.dmmRank}</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.percDmm?.toFixed(2)}%</td>
                                 <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.totalVol}</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-blue-400 font-medium">{Math.round(row.totalTraffic || 0).toLocaleString('pt-BR')}</td>
                                 <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.tmoAvg}</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-slate-400">{row.maxPAs}</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-slate-400">{row.avgPAs}</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.avgPAs - row.maxPAs}</td>
-                                {AVAILABLE_SHIFTS.filter(s => dimEnabledShifts.includes(s.type)).map(s => (
-                                  <td key={s.type} className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-semibold text-yellow-100">
-                                    {row.fixedHiredHC[s.type] || 0}
-                                  </td>
-                                ))}
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">0</td>
-                                <td className={`px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold ${row.finalSla === null ? 'bg-slate-800 text-slate-500' : row.finalSla < dimTargetSlaPercent ? 'bg-red-500/20 text-red-400' : row.finalSla > 85 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                                  {row.finalSla === null ? '-' : `${row.finalSla.toFixed(1)}%`}
-                                </td>
-                                <td className={`px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold ${row.finalSla === null ? 'bg-slate-800 text-slate-500' : row.finalSla < dimTargetSlaPercent ? 'bg-red-500/20 text-red-400' : row.finalSla > 85 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                                  {row.finalSla === null ? '-' : `${row.finalSla.toFixed(1)}%`}
-                                </td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold text-blue-400">{row.shiftRes?.coverage?.length > 0 ? Math.max(...row.shiftRes.coverage) : 0}</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold text-blue-400">{row.shiftRes?.coverage?.length > 0 ? Math.max(...row.shiftRes.coverage) : 0}</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{row.avgOccupancy}%</td>
-                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{dimShrinkage.toFixed(2)}%</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{(dimTargetSlaPercent * 100).toFixed(1)}%</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-blue-400 font-medium">{trafK.toFixed(1)}K</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{(row.percDmm || 0).toFixed(2)}%</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{tmoVar.toFixed(2)}%</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-xs">{curvaFor}/{curvaDim}</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold text-emerald-400">OK</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] text-amber-300 font-semibold">{dimShrinkage.toFixed(2)}%</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{(shr.abs + shr.treinamento).toFixed(2)}%</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{shr.abs.toFixed(2)}%</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{shr.turnover.toFixed(2)}%</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{shr.nr17.toFixed(2)}%</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)]">{shr.outros.toFixed(2)}%</td>
+                                <td className="px-2 py-1 border-r border-[rgba(255,255,255,0.05)] font-bold text-blue-300">{row.shiftRes?.coverage?.length > 0 ? Math.max(...row.shiftRes.coverage) : 0}</td>
                                 <td className="px-2 py-1">0,0%</td>
                               </tr>
-                            ))}
-                          </tbody>
-                          <tfoot className="bg-slate-700/80 font-bold border-t-2 border-blue-500">
-                            <tr>
-                              <td colSpan={4} className="px-2 py-2 text-right border-r border-[rgba(99,102,241,0.12)]">TOTAL / MÉDIA</td>
-                              <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">{monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0)}</td>
-                              <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-400">{Math.round(monthlyShiftSchedules.reduce((sum, r) => sum + r.totalTraffic, 0)).toLocaleString('pt-BR')}</td>
-                              <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">
-                                {monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0) > 0
-                                  ? Math.round(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalVol * Number(r.tmoAvg)), 0) / monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0))
-                                  : 0}
-                              </td>
-                              <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-slate-300">-</td>
-                              <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-slate-300">-</td>
-                              <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
-                              {AVAILABLE_SHIFTS.filter(s => dimEnabledShifts.includes(s.type)).map(s => (
-                                <td key={s.type} className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-300">
-                                  {Math.max(0, ...monthlyShiftSchedules.map(r => r.fixedHiredHC[s.type] || 0))}
-                                </td>
-                              ))}
-                              <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">0</td>
-                              <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-yellow-300">
-                                {(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalVol * (r.finalSla || 0)), 0) / (monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0) || 1)).toFixed(1)}%
-                              </td>
-                              <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-yellow-300">
-                                {(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalVol * (r.finalSla || 0)), 0) / (monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0) || 1)).toFixed(1)}%
-                              </td>
-                              <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-400">-</td>
-                              <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-400">-</td>
-                              <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">
-                                {Math.round(monthlyShiftSchedules.reduce((sum, r) => sum + r.avgOccupancy, 0) / (monthlyShiftSchedules.length || 1))}%
-                              </td>
-                              <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">{dimShrinkage}%</td>
-                              <td className="px-2 py-2">0,0%</td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
-                    )}
+                            );
+                          })}
+                        </tbody>
+                        <tfoot className="bg-slate-700/80 font-bold border-t-2 border-blue-500">
+                          <tr>
+                            <td colSpan={3} className="px-2 py-2 text-right border-r border-[rgba(99,102,241,0.12)]">TOTAL / MÉDIA</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">{monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0)}</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">
+                              {monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0) > 0
+                                ? Math.round(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalVol * Number(r.tmoAvg)), 0) / monthlyShiftSchedules.reduce((sum, r) => sum + r.totalVol, 0))
+                                : 0}
+                            </td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-yellow-300">{(dimTargetSlaPercent * 100).toFixed(1)}%</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-400">
+                              {(monthlyShiftSchedules.reduce((sum, r) => sum + (r.totalTraffic || 0), 0) / 1000).toFixed(1)}K
+                            </td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">100%</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">100%</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-amber-300">{dimShrinkage.toFixed(2)}%</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)]">-</td>
+                            <td className="px-2 py-2 border-r border-[rgba(99,102,241,0.12)] text-blue-300">-</td>
+                            <td className="px-2 py-2">0,0%</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
                   </div>
 
                   <div className="glass p-6">
