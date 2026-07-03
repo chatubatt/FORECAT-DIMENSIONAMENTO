@@ -262,10 +262,9 @@ export function calculateShifts(
         
         const hasExistingEntryAtThisStart = Array.from(scheduleMap.values()).some(item => item.startIndex === s);
         if (hasExistingEntryAtThisStart) {
-          score += 50.0; // Bônus alto para consolidar na mesma entrada (minimiza quantidade de turnos)
+          score += 5.0; // Bônus moderado para consolidar na mesma entrada
         } else {
-          // Penalidade para criar nova entrada — só cria se realmente necessário
-          score -= 8.0;
+          score -= 1.0; // Pequena penalidade para criar nova entrada
         }
         
         // Secondary Score (Tie-breaker 1): favor covering the highest deficits (centers shift around peak)
@@ -323,9 +322,9 @@ export function calculateShifts(
           
           const hasExistingEntryAtThisStart = Array.from(scheduleMap.values()).some(item => item.startIndex === s);
           if (hasExistingEntryAtThisStart) {
-            score += 50.0;
+            score += 5.0;
           } else {
-            score -= 8.0;
+            score -= 1.0;
           }
           
           if (score > bestScore) {
@@ -635,9 +634,9 @@ export function allocateShifts612_812(
       // Bônus para consolidação de entradas em allocateShifts612_812
       const hasExisting = Array.from(allocationMap.values()).some(item => item.start === cand.start);
       if (hasExisting) {
-        score += 50.0;
+        score += 5.0;
       } else {
-        score -= 8.0;
+        score -= 1.0;
       }
 
       if (score > bestScore) { bestScore = score; bestCand = cand; }
@@ -671,9 +670,9 @@ export function allocateShifts612_812(
 
         const hasExisting = Array.from(allocationMap.values()).some(item => item.start === cand.start);
         if (hasExisting) {
-          score += 50.0;
+          score += 5.0;
         } else {
-          score -= 8.0;
+          score -= 1.0;
         }
 
         if (score > bestScore) { bestScore = score; bestCand = cand; }
