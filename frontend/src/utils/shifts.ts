@@ -345,8 +345,8 @@ export function calculateShifts(
         wasted += overflow;
         
         // Primary Score: useful coverage minus wasted coverage
-        // Modificado: favorecer turnos maiores se eles cobrirem mais demanda. 
-        let score = (useful * 2) - (wasted * 0.5) + (shift.intervalsCovered * 0.1);
+        // Penalidade alta para desperdicio para evitar excesso de PA no pico
+        let score = (useful * 2) - (wasted * 3) + (shift.intervalsCovered * 0.1);
         
         const hasExistingEntryAtThisStart = Array.from(scheduleMap.values()).some(item => item.startIndex === s);
         if (hasExistingEntryAtThisStart) {
@@ -406,7 +406,7 @@ export function calculateShifts(
           const overflow = shift.intervalsCovered - (limit - s);
           wasted += overflow;
           
-          let score = (useful * 2) - (wasted * 0.5) + (shift.intervalsCovered * 0.1) + (reduction * 0.001);
+          let score = (useful * 2) - (wasted * 3) + (shift.intervalsCovered * 0.1) + (reduction * 0.001);
           
           const hasExistingEntryAtThisStart = Array.from(scheduleMap.values()).some(item => item.startIndex === s);
           if (hasExistingEntryAtThisStart) {
