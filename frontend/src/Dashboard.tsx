@@ -1082,14 +1082,15 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
       let bestSchedules = { ...baseSchedules };
 
       if (dmmWeekday && byDay[dmmWeekday]) {
-        const origReq = [...byDay[dmmWeekday].map((d: any) => d.requiredAgents)];
+        // Infla o req bruto pelo shrinkage para que a cobertura líquida atinja a NEC real
+        const origReq = byDay[dmmWeekday].map((d: any) => Math.ceil(d.requiredAgents * shrinkageFactor));
 
-        let low = 0.01;
+        let low = 0.8;  // Começar já acima da escala mínima (inflada pelo shrinkage já é 1x)
         let high = 5.0; // Allow up to 5x scale if the chosen DMM is much smaller than the 1st DMM
 
-        for (let iter = 0; iter < 15; iter++) { // 15 iterations for better precision
+        for (let iter = 0; iter < 20; iter++) { // 20 iterations for better precision
           const mid = (low + high) / 2;
-          const scaledReq = origReq.map(r => Math.round(r * mid));
+          const scaledReq = origReq.map((r: number) => Math.round(r * mid));
 
           const newWeekdaySchedule = calculateShifts(scaledReq, byDay[dmmWeekday].map((d: any) => d.intervalo), dimEnabledShifts, opDays, wMin, wMax, maxPALimit, weekdayVol > 0 ? forcedEntries : []);
 
@@ -1097,11 +1098,16 @@ export default function Dashboard({ activeTab: propActiveTab, onTabChange }: Das
           const firstDmmSla = evaluateDaySla(testSchedules, absoluteFirstDmm);
           const monthSla = evaluateMonthSla(testSchedules);
 
-          if (firstDmmSla >= dimTargetDmmSlaPercent) {
+          // Ambos os targets devem ser atingidos: SLA do 1º DMM e SLA mensal da meta
+          const monthSlaTarget = dimTargetSlaPercent / 100;
+          const dmmSlaTarget = dimTargetDmmSlaPercent / 100;
+          const bothMet = firstDmmSla >= dmmSlaTarget && monthSla >= monthSlaTarget;
+
+          if (bothMet) {
             bestSchedules = testSchedules;
-            high = mid; // SLAs are met, try to reduce HC more (lower K)
+            high = mid; // Ambos atendidos: tenta reduzir HC (menor K)
           } else {
-            low = mid; // SLAs are NOT met, need MORE HC (higher K)
+            low = mid; // Algum não atendido: precisa de mais HC (maior K)
           }
         }
       }
